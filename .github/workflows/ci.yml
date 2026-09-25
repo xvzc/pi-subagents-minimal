@@ -1,0 +1,126 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  commitlint:
+    if: github.event_name == 'pull_request'
+    name: commitlint
+    runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+
+    steps:
+      - name: Checkout pull request
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint pull request title
+        run: printf '%s\n' "$PR_TITLE" | npm run commitlint -- --verbose
+
+      - name: Lint pull request commits
+        run: npm run commitlint -- --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
+
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check
+        run: npm run check
+
+      - name: Build
+        run: npm run build
+
+  # The peerDependencies declare the floor (`>=0.84.0`) for pi-coding-agent and pi-tui,
+  # while pi-ai is a direct dependency (`^0.84.2`). This job holds the peers at the
+  # 0.84.0 floor and pi-ai at the 0.84.2 baseline to guard the lowest supported mix.
+  compat-floor-pi:
+    name: compat-floor-pi
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install floor Pi
+        run: npm install --no-save @earendil-works/pi-coding-agent@0.84.0 @earendil-works/pi-ai@0.84.2 @earendil-works/pi-tui@0.84.0
+
+      - name: Typecheck against floor Pi
+        run: npm run typecheck
+
+      - name: Test suite against floor Pi
+        run: npx vitest run --reporter=dot
+
+  # Forward canary: surface incompatibilities with the newest Pi release without making
+  # an untested future version a hard support guarantee.
+  compat-latest-pi:
+    name: compat-latest-pi
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install current Pi
+        run: npm install --no-save @earendil-works/pi-coding-agent@latest @earendil-works/pi-ai@latest @earendil-works/pi-tui@latest
+
+      - name: Typecheck against current Pi
+        run: npm run typecheck
+
+      - name: Test suite against current Pi
+        run: npx vitest run --reporter=dot
