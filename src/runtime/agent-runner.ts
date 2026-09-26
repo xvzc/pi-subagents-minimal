@@ -121,6 +121,47 @@ const ASSISTANT_ERROR: StoredError = Object.freeze({
   message: "The child assistant turn failed.",
 });
 
+const TURN_LIMIT_UNSUPPORTED_ERROR: StoredError = Object.freeze({
+  code: "CHILD_TURN_LIMIT_UNSUPPORTED",
+  message:
+    "The child session runtime does not expose a turn-boundary hook to enforce the configured maximum number of turns.",
+});
+
+/** A completed assistant turn as read by Pi's turn-boundary hooks. */
+interface TurnBoundaryContext {
+  message: { stopReason?: string };
+}
+
+/** Pi 0.86 exit hook, invoked after `turn_end`. */
+type LegacyShouldStopHook = (
+  context: TurnBoundaryContext,
+  signal?: AbortSignal,
+) => boolean | Promise<boolean>;
+
+type FinishTurnDecision = { action: "continue" } | { action: "end" };
+
+/** Pi 0.87 exit hook, invoked after tool results and before `turn_end`. */
+type FinishTurnHook = (
+  turn: TurnBoundaryContext,
+  signal?: AbortSignal,
+) => FinishTurnDecision | void | Promise<FinishTurnDecision | void>;
+
+/**
+ * Structural view of the turn-boundary hooks across Pi versions. The declared
+ * class fields also let the runner tell which runtime it is talking to when
+ * neither hook has been installed as a function yet.
+ */
+interface TurnBoundaryAgent {
+  shouldStopAfterTurn?: LegacyShouldStopHook;
+  finishTurn?: FinishTurnHook;
+}
+
+function turnBoundaryHooks(agent: unknown): TurnBoundaryAgent {
+  return typeof agent === "object" && agent !== null
+    ? (agent as TurnBoundaryAgent)
+    : {};
+}
+
 /** Build child sessions only through Pi's public SDK surface. */
 export function createPiChildSessionFactory(): ChildSessionFactory {
   return {
@@ -281,8 +322,23 @@ export function createPiChildSessionFactory(): ChildSessionFactory {
         }),
       });
 
+      // Pi 0.87 replaced `shouldStopAfterTurn` with `finishTurn`, and its
+      // `AgentSession` installs its own `finishTurn`. Capture that host hook once
+      // so every prompt composes it instead of stacking this runner's wrappers.
+      const boundaryAgent = turnBoundaryHooks(session.agent);
+      const supportsFinishTurn = "finishTurn" in boundaryAgent;
+      const hostFinishTurn = supportsFinishTurn
+        ? boundaryAgent.finishTurn
+        : undefined;
+      const turnLimitEnforceable =
+        supportsFinishTurn || "shouldStopAfterTurn" in boundaryAgent;
+
       return {
         async prompt(prompt, progress): Promise<ChildExecutionObservation> {
+          const maxTurns = input.maxTurns;
+          if (maxTurns !== undefined && !turnLimitEnforceable) {
+            return { error: { ...TURN_LIMIT_UNSUPPORTED_ERROR } };
+          }
           let turns = 0;
           let confirmedInput = 0;
           let confirmedOutput = 0;
@@ -339,13 +395,29 @@ export function createPiChildSessionFactory(): ChildSessionFactory {
             if (event.message.stopReason === "aborted") aborted = true;
             progress?.(observe());
           });
-          session.agent.shouldStopAfterTurn = () => {
-            if (input.maxTurns !== undefined && turns >= input.maxTurns) {
-              maxTurnsReached = true;
-              return true;
-            }
-            return false;
-          };
+          if (maxTurns !== undefined && supportsFinishTurn) {
+            boundaryAgent.finishTurn = async (turn, signal) => {
+              const hostDecision = await hostFinishTurn?.(turn, signal);
+              const stopReason = turn.message.stopReason;
+              if (
+                stopReason !== "error" &&
+                stopReason !== "aborted" &&
+                turns + 1 >= maxTurns
+              ) {
+                maxTurnsReached = true;
+                return { action: "end" };
+              }
+              return hostDecision;
+            };
+          } else if (maxTurns !== undefined) {
+            boundaryAgent.shouldStopAfterTurn = () => {
+              if (turns >= maxTurns) {
+                maxTurnsReached = true;
+                return true;
+              }
+              return false;
+            };
+          }
 
           try {
             await session.prompt(prompt, {

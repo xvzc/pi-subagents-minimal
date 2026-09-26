@@ -270,8 +270,9 @@ describe("Pi child runner", () => {
     let listener: AgentSessionEventListener | undefined;
     let turns = 0;
     let unsubscribed = false;
-    const agent: { shouldStopAfterTurn?: () => boolean | Promise<boolean> } =
-      {};
+    const agent: { shouldStopAfterTurn?: () => boolean | Promise<boolean> } = {
+      shouldStopAfterTurn: undefined,
+    };
     sdk.session = {
       agent,
       subscribe(next: AgentSessionEventListener) {
@@ -621,8 +622,9 @@ describe("Pi child runner", () => {
     const steers: string[] = [];
     let aborted = false;
     let disposed = false;
-    const agent: { shouldStopAfterTurn?: () => boolean | Promise<boolean> } =
-      {};
+    const agent: { shouldStopAfterTurn?: () => boolean | Promise<boolean> } = {
+      shouldStopAfterTurn: undefined,
+    };
     sdk.session = {
       agent,
       subscribe(next: AgentSessionEventListener) {
@@ -698,5 +700,203 @@ describe("Pi child runner", () => {
     expect(steers).toEqual(["change course"]);
     expect(aborted).toBe(true);
     expect(disposed).toBe(true);
+  });
+
+  it("enforces the limit through the current finishTurn hook and composes the host hook", async () => {
+    let listener: AgentSessionEventListener | undefined;
+    let turns = 0;
+    let hostCalls = 0;
+    let unsubscribed = false;
+    const agent: {
+      finishTurn?: (turn: {
+        message: { stopReason?: string };
+      }) => Promise<{ action: "continue" | "end" } | undefined>;
+    } = {
+      finishTurn: async () => {
+        hostCalls += 1;
+        return { action: "continue" };
+      },
+    };
+    sdk.session = {
+      agent,
+      subscribe(next: AgentSessionEventListener) {
+        listener = next;
+        return () => {
+          unsubscribed = true;
+        };
+      },
+      async steer() {},
+      async abort() {},
+      async prompt() {
+        while (true) {
+          turns += 1;
+          listener?.({
+            type: "message_end",
+            message: {
+              role: "assistant",
+              content: [],
+              stopReason: "toolUse",
+              usage: usage(turns * 1000, turns * 500),
+            },
+          } as never);
+          const decision = await agent.finishTurn?.({
+            message: { stopReason: "toolUse" },
+          });
+          listener?.({
+            type: "turn_end",
+            message: {
+              role: "assistant",
+              content: [{ type: "text", text: `turn ${turns}` }],
+              stopReason: "toolUse",
+            },
+            toolResults: [],
+          } as never);
+          if (decision?.action === "end") break;
+        }
+      },
+      getSessionStats: () => ({
+        assistantMessages: turns,
+        toolCalls: 1,
+        tokens: { total: 42 },
+      }),
+      getLastAssistantText: () => `turn ${turns}`,
+    };
+    const concrete = fakeModel();
+    const handle = await createPiChildSessionFactory().create({
+      id: "00000000-0000-001f",
+      cwd: "/project",
+      agentDir: "/agent-dir",
+      parentSessionId: "parent",
+      model: concrete,
+      modelRegistry: { find: () => concrete } as unknown as ModelRegistry,
+      thinking: "off",
+      systemPrompt: "Child prompt.",
+      tools: [],
+      maxTurns: 2,
+    });
+    const progress: ChildExecutionObservation[] = [];
+    const observation = await handle.prompt("go", (snapshot) =>
+      progress.push(snapshot),
+    );
+
+    expect(turns).toBe(2);
+    expect(hostCalls).toBe(2);
+    expect(progress).toHaveLength(2);
+    expect(observation).toEqual({
+      output: "turn 2",
+      usage: { turns: 2, tool_uses: 1, total_tokens: 42 },
+      widgetUsage: { turns: 2, input: 3000, output: 1500 },
+      maxTurnsReached: true,
+    });
+    expect(unsubscribed).toBe(true);
+
+    const resumed = await handle.prompt("again");
+    expect(turns).toBe(4);
+    expect(hostCalls).toBe(4);
+    expect(resumed).toMatchObject({
+      output: "turn 4",
+      maxTurnsReached: true,
+    });
+  });
+
+  it("does not classify errored or aborted turns as turn limits under finishTurn", async () => {
+    for (const stopReason of ["error", "aborted"] as const) {
+      let listener: AgentSessionEventListener | undefined;
+      const agent: {
+        finishTurn?: (turn: {
+          message: { stopReason?: string };
+        }) => Promise<{ action: "continue" | "end" } | undefined>;
+      } = { finishTurn: async () => undefined };
+      sdk.session = {
+        agent,
+        subscribe(next: AgentSessionEventListener) {
+          listener = next;
+          return () => undefined;
+        },
+        async steer() {},
+        async abort() {},
+        async prompt() {
+          const message = {
+            role: "assistant",
+            content: [],
+            stopReason,
+            usage: usage(10, 5),
+          };
+          listener?.({ type: "message_end", message } as never);
+          await agent.finishTurn?.({ message: { stopReason } });
+          listener?.({ type: "turn_end", message, toolResults: [] } as never);
+        },
+        getSessionStats: () => ({
+          assistantMessages: 1,
+          toolCalls: 0,
+          tokens: { total: 15 },
+        }),
+        getLastAssistantText: () => undefined,
+      };
+      const concrete = fakeModel();
+      const handle = await createPiChildSessionFactory().create({
+        id: "00000000-0000-001f",
+        cwd: "/project",
+        agentDir: "/agent-dir",
+        parentSessionId: "parent",
+        model: concrete,
+        modelRegistry: { find: () => concrete } as unknown as ModelRegistry,
+        thinking: "off",
+        systemPrompt: "Child prompt.",
+        maxTurns: 1,
+      });
+
+      const observation = await handle.prompt("go");
+      expect(observation.maxTurnsReached, stopReason).toBeUndefined();
+      if (stopReason === "aborted") {
+        expect(observation.aborted).toBe(true);
+      } else {
+        expect(observation.error?.diagnostic).toEqual({
+          phase: "assistant_stop",
+          assistant_turn: 1,
+          stop_reason: "error",
+        });
+      }
+    }
+  });
+
+  it("fails closed when a requested turn limit has no runtime hook to enforce it", async () => {
+    let prompted = false;
+    sdk.session = {
+      agent: {},
+      subscribe() {
+        return () => undefined;
+      },
+      async steer() {},
+      async abort() {},
+      async prompt() {
+        prompted = true;
+      },
+      getSessionStats: () => ({
+        assistantMessages: 0,
+        toolCalls: 0,
+        tokens: { total: 0 },
+      }),
+      getLastAssistantText: () => undefined,
+    };
+    const concrete = fakeModel();
+    const handle = await createPiChildSessionFactory().create({
+      id: "00000000-0000-001f",
+      cwd: "/project",
+      agentDir: "/agent-dir",
+      parentSessionId: "parent",
+      model: concrete,
+      modelRegistry: { find: () => concrete } as unknown as ModelRegistry,
+      thinking: "off",
+      systemPrompt: "Child prompt.",
+      maxTurns: 3,
+    });
+
+    const observation = await handle.prompt("go");
+    expect(prompted).toBe(false);
+    expect(observation.maxTurnsReached).toBeUndefined();
+    expect(observation.error).toMatchObject({
+      code: "CHILD_TURN_LIMIT_UNSUPPORTED",
+    });
   });
 });
