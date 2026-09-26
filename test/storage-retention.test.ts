@@ -833,7 +833,7 @@ describe("lifecycle hooks", () => {
     } as unknown as ExtensionAPI;
     await extension(pi, undefined, { agentDir, cwd });
 
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(4);
     expect(existsSync(target)).toBe(false);
   });
 });

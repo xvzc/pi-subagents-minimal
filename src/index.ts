@@ -1,7 +1,7 @@
 /**
  * Pi extension entry point for pi-subagents-minimal.
  *
- * Activation registers exactly the five public tools (S1). Each handler is an
+ * Activation registers exactly the four public tools (S1). Each handler is an
  * explicit service boundary: the tools depend on the narrow service
  * interfaces in `types.ts`. Normal activation composes the default agent
  * registry and background session runtime; the status runtime
@@ -57,7 +57,6 @@ import {
   SubagentListSchema,
   SubagentOutputSchema,
   SubagentStatusSchema,
-  SubagentWaitSchema,
 } from "./schemas.js";
 import {
   type CleanupResult,
@@ -68,13 +67,12 @@ import {
 import type { MinimalSubagentsConfig, ToolServices } from "./types.js";
 import { isSessionId } from "./types.js";
 
-/** Exactly the five public tools (S1). */
+/** Exactly the four public tools (S1). */
 export const TOOL_NAMES = [
   "subagent_call",
   "subagent_output",
   "subagent_list",
   "subagent_status",
-  "subagent_wait",
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -358,108 +356,6 @@ function stopSubagentCallSpinner(context: {
   return last ?? stored ?? registered;
 }
 
-interface SubagentWaitRenderState {
-  spinner?: SubagentWaitSpinner;
-}
-
-/** Generic safe label when a wait failure carries no usable message or code. */
-const AGENT_WAIT_GENERIC_FAILURE = "Agent wait failed.";
-
-function subagentWaitSessionCount(args: unknown): number | undefined {
-  if (!args || typeof args !== "object" || Array.isArray(args))
-    return undefined;
-  const sessionIds = (args as Record<string, unknown>).session_ids;
-  if (!Array.isArray(sessionIds)) return undefined;
-  return sessionIds.length;
-}
-
-function subagentWaitMetadata(theme: Theme, count: number | undefined): string {
-  return (
-    theme.fg("toolTitle", "Agent Wait") +
-    (count === undefined ? "" : theme.fg("dim", ` · ${count} sessions`))
-  );
-}
-
-/** Safe one-line wait failure reason: the error message when usable, else the error code, else a generic label. */
-function subagentWaitFailureReason(details: unknown): string {
-  if (isErrorEnvelope(details)) {
-    const byMessage = sanitizeReasonText(details.error.message);
-    if (byMessage.length > 0) return byMessage;
-    const byCode = sanitizeReasonText(details.error.code);
-    if (byCode.length > 0) return byCode;
-  }
-  return AGENT_WAIT_GENERIC_FAILURE;
-}
-
-/** True when a settled `subagent_wait` result completed (vs interrupted or failed). */
-function isSubagentWaitCompleted(
-  result: AgentToolResult<unknown>,
-  contextIsError?: unknown,
-): boolean {
-  if (contextIsError === true) return false;
-  if ((result as { isError?: unknown }).isError === true) return false;
-  if (isErrorEnvelope(result.details)) return false;
-  if (!result.details || typeof result.details !== "object") return false;
-  return (result.details as Record<string, unknown>).reason === "completed";
-}
-
-class SubagentWaitSpinner extends Container {
-  private frame = 0;
-  private timer: ReturnType<typeof setInterval> | undefined;
-  private invalidationFailed = false;
-  private count: number | undefined;
-  private theme?: Theme;
-  private requestRender: () => void = () => {};
-  private onInvalidateFailure: () => void = () => {};
-  private readonly heading = new Text("", 0, 0);
-
-  constructor() {
-    super();
-    this.addChild(this.heading);
-  }
-
-  update(
-    count: number | undefined,
-    theme: Theme,
-    invalidate: (() => void) | undefined,
-    onInvalidateFailure: () => void,
-  ): void {
-    this.count = count;
-    this.theme = theme;
-    this.requestRender = invalidate ?? (() => {});
-    this.onInvalidateFailure = onInvalidateFailure;
-    this.refresh();
-    if (!this.invalidationFailed && this.timer === undefined) {
-      this.timer = setInterval(() => {
-        this.frame = (this.frame + 1) % SUBAGENT_SPINNER_FRAMES.length;
-        this.refresh();
-        try {
-          this.requestRender();
-        } catch {
-          this.invalidationFailed = true;
-          this.stop();
-          this.onInvalidateFailure();
-        }
-      }, SUBAGENT_SPINNER_INTERVAL_MS);
-      this.timer.unref?.();
-    }
-  }
-
-  stop(): void {
-    if (this.timer !== undefined) {
-      clearInterval(this.timer);
-      this.timer = undefined;
-    }
-  }
-
-  private refresh(): void {
-    if (!this.theme) return;
-    this.heading.setText(
-      `${this.theme.fg("accent", SUBAGENT_SPINNER_FRAMES[this.frame])} ${subagentWaitMetadata(this.theme, this.count)}`,
-    );
-  }
-}
-
 function subagentCallPayloadResult(
   value: unknown,
   presentationAgent: string | undefined,
@@ -486,9 +382,9 @@ function subagentCallPayloadResult(
 }
 
 /**
- * Build the five tool definitions, wired to the given services.
+ * Build the four tool definitions, wired to the given services.
  * Missing services leave explicit not-yet-composed boundaries.
- * Order is exactly `call`, `output`, `list`, `status`, `wait`.
+ * Order is exactly `call`, `output`, `list`, `status`.
  */
 export function createTools(services?: Partial<ToolServices>) {
   const sessions = services?.sessions;
@@ -807,114 +703,6 @@ export function createTools(services?: Partial<ToolServices>) {
         return renderAgentStatus(result.details, expanded, theme);
       },
     }),
-    defineTool({
-      name: "subagent_wait",
-      label: "Agent Wait",
-      description:
-        "Wait for all named subagent sessions; parent input interrupts only this wait and a later call rechecks current state.",
-      parameters: SubagentWaitSchema,
-      execute: async (_toolCallId, params, signal, _onUpdate, context) =>
-        safeExecute(async () => {
-          if (!sessions?.wait) unbound("session", "subagent_wait");
-          const operation =
-            sessions instanceof SessionManager
-              ? sessions.bindOperationSignal(signal, context)
-              : undefined;
-          const value =
-            sessions instanceof SessionManager
-              ? await sessions.wait(params, context, signal, operation)
-              : await sessions.wait(params, context, signal);
-          return payloadResult(value);
-        }),
-      renderCall(args, theme, context) {
-        const state = context.state as SubagentWaitRenderState;
-        if (context.isPartial === false) {
-          state.spinner?.stop();
-          state.spinner = undefined;
-          if (context.lastComponent instanceof SubagentWaitSpinner) {
-            context.lastComponent.stop();
-          }
-          // The settled outcome renders once in the result region.
-          return new Container();
-        }
-        if (
-          context.executionStarted === true &&
-          context.lastComponent === undefined
-        ) {
-          // Replay/export is host-local: never start a live timer, and the
-          // settled outcome renders in the result region.
-          return new Container();
-        }
-        const count = subagentWaitSessionCount(args);
-        const existing =
-          context.lastComponent instanceof SubagentWaitSpinner
-            ? context.lastComponent
-            : state.spinner;
-        const spinner = existing ?? new SubagentWaitSpinner();
-        state.spinner = spinner;
-        spinner.update(count, theme, context.invalidate, () => {
-          if (state.spinner === spinner) state.spinner = undefined;
-        });
-        return spinner;
-      },
-      renderResult(result, { isPartial }, theme, context) {
-        const state = context.state as SubagentWaitRenderState;
-        if (isPartial) return new Container();
-        state.spinner?.stop();
-        state.spinner = undefined;
-        const count = subagentWaitSessionCount(context.args);
-        if (
-          isErrorEnvelope(result.details) ||
-          (context as { isError?: unknown }).isError === true
-        ) {
-          // Failure reason is always visible, even when collapsed; the
-          // heading carries only glyph/title/metadata.
-          const failure = new Container();
-          failure.addChild(
-            new Text(
-              `${theme.fg("error", "x")} ${subagentWaitMetadata(theme, count)}`,
-              0,
-              0,
-            ),
-          );
-          failure.addChild(
-            new Text(
-              theme.fg("error", subagentWaitFailureReason(result.details)),
-              2,
-              0,
-            ),
-          );
-          return failure;
-        }
-        if (
-          isSubagentWaitCompleted(
-            result,
-            (context as { isError?: unknown }).isError,
-          )
-        ) {
-          const completed = new Container();
-          completed.addChild(
-            new Text(
-              `${theme.fg("success", "✓")} ${subagentWaitMetadata(theme, count)}`,
-              0,
-              0,
-            ),
-          );
-          return completed;
-        }
-        // Interrupted (or any other non-completed settlement) must never
-        // show success; use the warning convention instead.
-        const interrupted = new Container();
-        interrupted.addChild(
-          new Text(
-            `${theme.fg("warning", "!")} ${subagentWaitMetadata(theme, count)}`,
-            0,
-            0,
-          ),
-        );
-        return interrupted;
-      },
-    }),
   ];
 }
 
@@ -955,7 +743,7 @@ export function getEffectiveConfig(): MinimalSubagentsConfig {
 }
 
 /**
- * Pi extension factory. Registers exactly the five public tools (S1, A1),
+ * Pi extension factory. Registers exactly the four public tools (S1, A1),
  * then runs activation retention cleanup (003 S15).
  * Normal activation composes a default agent registry and background session
  * manager bound to the same `agentDir`/`cwd` path context used for config

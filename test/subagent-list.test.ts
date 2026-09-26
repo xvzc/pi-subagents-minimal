@@ -130,17 +130,16 @@ function writeAgent(dir: string, file: string, content: string): string {
 }
 
 describe("tool surface", () => {
-  it("keeps the exact five public tools on normal activation", async () => {
+  it("keeps the exact four public tools on normal activation", async () => {
     const names = (await boot(useFixture())).map((tool) => tool.name);
-    expect(names).toHaveLength(5);
-    expect(new Set(names).size).toBe(5);
+    expect(names).toHaveLength(4);
+    expect(new Set(names).size).toBe(4);
     expect([...names].sort()).toEqual([...TOOL_NAMES].sort());
     expect(TOOL_NAMES).toEqual([
       "subagent_call",
       "subagent_output",
       "subagent_list",
       "subagent_status",
-      "subagent_wait",
     ]);
   });
 

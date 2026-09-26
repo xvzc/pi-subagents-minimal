@@ -15,7 +15,6 @@ import type {
   SubagentListParams,
   SubagentOutputParams,
   SubagentStatusParams,
-  SubagentWaitParams,
 } from "./schemas.js";
 
 // ---- Identifiers (S2, S3) ----
@@ -186,7 +185,7 @@ export interface MinimalSubagentsConfig {
 
 // ---- Service boundaries ----
 //
-// Narrow interfaces the five tools depend on. Later features (agent registry,
+// Narrow interfaces the four tools depend on. Later features (agent registry,
 // session runtime, record storage) provide implementations
 // and compose them at the entry point. Results stay `unknown` here: each
 // owning feature fixes its result contract when it plugs in.
@@ -211,22 +210,6 @@ export interface SessionCallLifecycle {
   identified(agent: string): void;
 }
 
-export interface SubagentWaitTerminal {
-  session_id: string;
-  status: TerminalRunStatus;
-}
-
-export interface SubagentWaitPending {
-  session_id: string;
-  status: ActiveRunStatus;
-}
-
-export interface SubagentWaitResult {
-  reason: "completed" | "interrupted";
-  terminal: SubagentWaitTerminal[];
-  pending: SubagentWaitPending[];
-}
-
 /** Session runtime boundary (composed by the subagent-runtime feature). */
 export interface SessionService {
   call(
@@ -235,11 +218,6 @@ export interface SessionService {
     lifecycle?: SessionCallLifecycle,
   ): Promise<unknown>;
   output(params: SubagentOutputParams): Promise<unknown>;
-  wait?(
-    params: SubagentWaitParams,
-    context?: ExtensionContext,
-    signal?: AbortSignal,
-  ): Promise<SubagentWaitResult>;
   shutdown(context: ExtensionContext): Promise<void>;
 }
 
@@ -253,7 +231,7 @@ export interface StatusService {
   status(params: SubagentStatusParams): Promise<unknown>;
 }
 
-/** Services the extension entry point wires into the five tools. */
+/** Services the extension entry point wires into the four tools. */
 export interface ToolServices {
   sessions: SessionService;
   registry: AgentRegistryService;

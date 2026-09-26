@@ -1,5 +1,7 @@
 # Requirements: Interruptible Subagent Wait
 
+> Historical specification: this feature was subsequently removed in full. These requirements describe the former design and do not govern the current public API.
+
 ## Goal
 
 Allow the main agent to wait without polling until a selected set of background

@@ -2,6 +2,8 @@
 
 This repository uses feature-centric spec-driven development.
 
+The `008-subagent-wait` directory is a historical record of a removed feature, not a current implementation requirement. The tool, its runtime wait machinery, and its tests were removed; background completion notifications and `subagent_output` remain. The dependency order below records the original feature sequence, not the current public tool surface.
+
 ## Feature Map
 
 ```text
@@ -30,7 +32,7 @@ This repository uses feature-centric spec-driven development.
 | `004-async-concurrency` | Background FIFO concurrency gate, Agents TUI, and hidden completion signal delivery |
 | `005-subagent-call-rendering` | Background call rows, steer control rendering, and `subagent_output` Agent Output presentation |
 | `006-coordination-prompt` | Coordination policy delivered via detailed tool `description` strings |
-| `008-subagent-wait` | Interruptible all-session wait with snapshot-based re-wait |
+| `008-subagent-wait` | Historical only: interruptible all-session wait, subsequently removed |
 | `009-session-id-format` | Prefixless random 64-bit `8-4-4` session identifiers |
 | `010-context-diagnostics` | Context-based warning delivery without raw terminal output |
 | `011-isolated-workspace` | Optional isolated child execution directory for new sessions |

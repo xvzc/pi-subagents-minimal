@@ -1851,7 +1851,10 @@ describe("background terminal push", () => {
       });
       expect(
         await h.manager.output({ session_id: "00000000-0000-001f" }),
-      ).toMatchObject({ status });
+      ).toMatchObject({
+        status,
+        ...(status === "aborted" ? { error: { code: "CHILD_ABORTED" } } : {}),
+      });
     },
   );
 
@@ -2342,7 +2345,6 @@ describe("background output and session status", () => {
         status: "running",
       });
     });
-    const waiting = h.manager.wait({ session_ids: [sessionId] }, h.context);
 
     loadGate.resolve({ records: [stale], warnings: [] });
     await loading;
@@ -2354,10 +2356,11 @@ describe("background output and session status", () => {
     ]);
 
     promptGate.resolve({ output: "live output" });
-    await expect(waiting).resolves.toEqual({
-      reason: "completed",
-      terminal: [{ session_id: sessionId, status: "completed" }],
-      pending: [],
+    await vi.waitFor(async () => {
+      expect(await h.manager.output({ session_id: sessionId })).toMatchObject({
+        status: "completed",
+        output: "live output",
+      });
     });
     expect(await h.manager.output({ session_id: sessionId })).toMatchObject({
       status: "completed",

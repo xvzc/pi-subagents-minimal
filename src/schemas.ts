@@ -1,7 +1,7 @@
 /**
  * Public TypeBox schemas for pi-subagents-minimal.
  *
- * This module owns the five tools' parameter shapes and the shared thinking
+ * This module owns the four tools' parameter shapes and the shared thinking
  * and error-envelope schemas. Action-specific runtime validation (ranges,
  * resolution, state checks) remains with the owning feature.
  *
@@ -96,7 +96,7 @@ export const SubagentOutputSchema = Type.Object(
   },
   {
     description:
-      "Returns the retained full report for one session without consuming it; repeated reads are allowed.",
+      "Returns the retained full report for a session without consuming it. Do not use this to poll for results; completion will be notified automatically.",
   },
 );
 export type SubagentOutputParams = Static<typeof SubagentOutputSchema>;
@@ -116,25 +116,7 @@ export const SubagentStatusSchema = Type.Object(
   {},
   {
     description:
-      "Takes no parameters. Returns lifecycle summaries only, not verified evidence or full output. Use subagent_output with a session ID when the complete result is needed.",
+      "Returns lifecycle summaries only, not verified evidence or full output. Use subagent_output for the full report after completion notification; do not use this to poll agent status.",
   },
 );
 export type SubagentStatusParams = Static<typeof SubagentStatusSchema>;
-
-/** `subagent_wait` waits for all named sessions to become terminal. */
-export const SubagentWaitSchema = Type.Object(
-  {
-    session_ids: Type.Array(Type.String(), {
-      minItems: 1,
-      uniqueItems: true,
-      description:
-        "Session IDs to wait for. All must belong to the current parent session. Normal parent input interrupts only this wait; call again to recheck current session state.",
-    }),
-  },
-  {
-    additionalProperties: false,
-    description:
-      "Waits until all named sessions are terminal. Interactive or RPC parent input interrupts only the wait, and a later call starts from authoritative current snapshots.",
-  },
-);
-export type SubagentWaitParams = Static<typeof SubagentWaitSchema>;

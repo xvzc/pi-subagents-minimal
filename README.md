@@ -4,10 +4,13 @@ A minimal Pi extension for subagent invocation.
 
 ## Installation
 
-This repository does not define a registry publish or install command, so no
-registry installation is documented here. To use it locally, clone the
-repository, install dependencies, and register the package as a Pi extension
-via its declared `./src/index.ts` entry according to your Pi setup:
+```sh
+pi install npm:@xvzc/pi-subagents-minimal
+```
+
+To use it locally, clone the repository, install dependencies, and register
+the package as a Pi extension via its declared `./src/index.ts` entry
+according to your Pi setup:
 
 ```sh
 git clone <repo-url>
@@ -27,9 +30,9 @@ npm install
 4. To continue the same session, call `subagent_call` with `type: "resume"`,
    the `session_id`, and the follow-up `prompt`. To intervene in a running
    session immediately, use `type: "steer"` with the `session_id`.
-5. To wait for sessions to finish, call `subagent_wait` with `session_ids`.
-   Parent input interrupts only the wait; call again to recheck state.
-6. For summaries only (never full output), call `subagent_status`.
+5. While subagents run, continue independent work. Completion notifications are
+   pushed when children finish. For summaries only (never full output), call
+   `subagent_status`.
 
 ## Tools
 
@@ -39,7 +42,6 @@ npm install
 | `subagent_output` | Read the retained full report for one session.                                         | `session_id`.                                                                                                                                            |
 | `subagent_list`   | List enabled subagent roles.                                                           | None.                                                                                                                                                    |
 | `subagent_status` | Show lifecycle summaries of active and recent sessions.                                | None.                                                                                                                                                    |
-| `subagent_wait`   | Wait until all named sessions are terminal.                                            | `session_ids` (non-empty, unique).                                                                                                                       |
 
 Session IDs are 16 lowercase hex digits grouped `8-4-4`. Failures return a
 coded `{ error: { code, message } }` envelope.

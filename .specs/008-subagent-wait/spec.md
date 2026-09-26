@@ -1,5 +1,7 @@
 # Specification: Interruptible Subagent Wait
 
+> Historical specification: `subagent_wait` and its runtime support have been removed. The contracts below describe the former feature, not the current public API.
+
 Extends `002-subagent-runtime` and `004-async-concurrency`. Contracts not
 amended below remain in force.
 

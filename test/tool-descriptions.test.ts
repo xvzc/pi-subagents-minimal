@@ -88,14 +88,12 @@ describe("tool descriptions", () => {
       "subagent_output",
       "subagent_list",
       "subagent_status",
-      "subagent_wait",
     ]);
     expect(tools.map((tool) => tool.description)).toEqual([
       "Start, resume, or steer a subagent session within the current task's authorized scope.",
       "Read the observed output of a subagent session after its completion notification has been received. Do not use this tool to wait for or poll a running subagent.",
       "List the enabled subagent roles available for delegation.",
       "Show the status of active and recent subagent sessions.",
-      "Wait for all named subagent sessions; parent input interrupts only this wait and a later call rechecks current state.",
     ]);
     for (const tool of tools) {
       expect(tool.description).not.toContain("\n");
@@ -165,18 +163,6 @@ describe("tool descriptions", () => {
     expect(description).toContain("direct inspection or appropriate checks");
   });
 
-  it("documents all-session, interruptible, snapshot-based wait behavior", async () => {
-    const { tools } = await bootWithHandlers();
-    const wait = schemaOf(tools, "subagent_wait");
-    expect(Object.keys(wait.properties ?? {})).toEqual(["session_ids"]);
-    expect(wait.description).toContain("all named sessions");
-    expect(wait.description).toContain("interrupts only the wait");
-    expect(wait.description).toContain("authoritative current snapshots");
-    const sessionIds = propertyDescription(wait, "session_ids");
-    expect(sessionIds).toContain("current parent session");
-    expect(sessionIds).toContain("call again to recheck");
-  });
-
   it("uses schema descriptions for parameterless list and status guidance", async () => {
     const { tools } = await bootWithHandlers();
     const list = schemaOf(tools, "subagent_list");
@@ -212,7 +198,7 @@ describe("tool descriptions", () => {
 
   it("registers one before_agent_start handler and keeps existing handlers", async () => {
     const { tools, handlers } = await bootWithHandlers();
-    expect(tools).toHaveLength(5);
+    expect(tools).toHaveLength(4);
     expect(handlers.get("before_agent_start")).toHaveLength(1);
     expect(handlers.get("session_start")).toHaveLength(1);
     expect(handlers.get("input")).toHaveLength(1);

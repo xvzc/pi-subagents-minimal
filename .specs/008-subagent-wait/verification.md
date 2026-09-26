@@ -1,7 +1,6 @@
 # Verification: Interruptible Subagent Wait
 
-Status: **IMPLEMENTED; FOCUSED VERIFICATION PASSED.** The current full suite
-has one unrelated pre-existing rendering expectation failure documented below.
+Status: **HISTORICAL; FEATURE REMOVED.** The verification results and commands below record the former implementation and must not be read as current checks. In particular, `test/subagent-wait.test.ts` has been removed. Background completion delivery remains available without a wait tool.
 
 ## Traceability
 
