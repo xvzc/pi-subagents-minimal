@@ -1,6 +1,6 @@
 {
   "name": "@xvzc/pi-subagents-minimal",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "A minimal pi extension for subagent invocation and inspection.",
   "license": "MIT",
   "files": [
