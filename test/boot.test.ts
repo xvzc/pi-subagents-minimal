@@ -1,5 +1,5 @@
 /**
- * Boot tests (A1): the extension registers exactly the five public tools,
+ * Boot tests (A1): the extension registers exactly the four public tools,
  * each with a description and parameter schema, and unbound tools fail with
  * a coded envelope instead of throwing into Pi (S1, S4).
  */
@@ -61,17 +61,16 @@ function textOf(result: {
 }
 
 describe("extension boot", () => {
-  it("registers exactly the five named public tools", async () => {
+  it("registers exactly the four named public tools", async () => {
     const names = (await boot()).map((tool) => tool.name);
-    expect(names).toHaveLength(5);
-    expect(new Set(names).size).toBe(5);
+    expect(names).toHaveLength(4);
+    expect(new Set(names).size).toBe(4);
     expect([...names].sort()).toEqual([...TOOL_NAMES].sort());
     expect(TOOL_NAMES).toEqual([
       "subagent_call",
       "subagent_output",
       "subagent_list",
       "subagent_status",
-      "subagent_wait",
     ]);
   });
 

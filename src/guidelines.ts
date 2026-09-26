@@ -69,19 +69,14 @@ second format.
 
 ## Dispatch and Result Collection
 
-While delegated work runs, continue only with useful orchestration work such as
-preparing shared contracts, inputs, or follow-up coordination. Do not duplicate the 
-delegated work itself. If nothing else useful remains, stop issuing tool calls and 
-wait for the completion notification.
+While delegated work is running, continue only with useful orchestration work,
+such as preparing shared contracts, inputs, or follow-up coordination. Do not
+duplicate or redo the delegated work. If no useful orchestration work remains,
+stop issuing tool calls and end the turn.
 
 Do not call the subagent output/result tool before a completion notification
-has been received for that run. After the completion notification arrives, 
+has been received for that run. After the completion notification arrives,
 collect the result exactly once.
-
-If a subagent completion notification refers to a result that has already been 
-collected and processed, silently ignore it. Do not call subagent_output again 
-and do not produce a user-facing acknowledgment unless the notification contains 
-new actionable information.
 
 For delegated-agent questions and blockers:
 
@@ -125,6 +120,20 @@ or perform destructive cleanup without the appropriate authorization.
 
 Apply the project's validation and acceptance standards when deciding on review,
 fixes, and final acceptance.
+
+## Integration and Validation
+
+Each writer task owns focused validation, self-inspection, and correction of its own
+deliverable. Routine validation belongs to the writer task and should not be delegated
+as a separate coordination task.
+
+When separate changes or outputs must be combined, you own the integration. Merge them,
+resolve integration issues, and run the relevant integration tests or checks on the
+combined result yourself.
+
+An unrun check is unverified, not passed. Static inspection does not prove runtime
+behavior. Evaluate reviewer findings against the source, approved requirements, and
+write scope before requesting changes.
 
 </agent-coordination>`;
 

@@ -9,11 +9,7 @@ import { notifyWarning } from "../diagnostics.js";
 import type { AgentRegistryOptions } from "../agents/registry.js";
 import { createAgentRegistry } from "../agents/registry.js";
 import { MinimalSubagentsError } from "../errors.js";
-import type {
-  SubagentCallParams,
-  SubagentOutputParams,
-  SubagentWaitParams,
-} from "../schemas.js";
+import type { SubagentCallParams, SubagentOutputParams } from "../schemas.js";
 import { sessionRecordPath } from "../storage/paths.js";
 import { type LoadResult, RecordStore } from "../storage/record-store.js";
 import {
@@ -34,7 +30,6 @@ import {
   type SessionId,
   type SessionService,
   type SessionSummary,
-  type SubagentWaitResult,
 } from "../types.js";
 import {
   type ChildExecutionObservation,
@@ -193,15 +188,6 @@ interface OperationAbortBinding {
   onAbort: () => void;
 }
 
-interface ActiveWait {
-  namespace: string;
-  records: readonly LiveRecord[];
-  settled: boolean;
-  resolve(result: SubagentWaitResult): void;
-  reject(error: unknown): void;
-  dispose(): void;
-}
-
 function copy<T>(value: T): T {
   return structuredClone(value);
 }
@@ -342,7 +328,6 @@ export class SessionManager implements SessionService, SessionStatusSource {
   private runningSlots = 0;
   private readonly waiters: LiveRecord[] = [];
   private readonly views = new Map<string, AgentsView>();
-  private readonly activeWaits = new Map<string, ActiveWait>();
   private readonly operationAbortBindings = new WeakMap<
     AbortSignal,
     OperationAbortBinding
@@ -651,93 +636,6 @@ export class SessionManager implements SessionService, SessionStatusSource {
     });
   }
 
-  async wait(
-    params: SubagentWaitParams,
-    context?: ExtensionContext,
-    signal?: AbortSignal,
-    operation?: OperationAbortBinding,
-  ): Promise<SubagentWaitResult> {
-    if (!context) {
-      throw new MinimalSubagentsError(
-        "INTERNAL_ERROR",
-        "The Pi call context is unavailable.",
-      );
-    }
-    this.assertOperationActive(operation);
-    if (signal?.aborted) {
-      throw new MinimalSubagentsError(
-        "INTERNAL_ERROR",
-        "The parent operation was aborted.",
-      );
-    }
-    this.assertNamespaceOpen(context);
-    const namespace = namespaceOf(context);
-    if (this.activeWaits.has(namespace)) {
-      throw new MinimalSubagentsError(
-        "SESSION_BUSY",
-        "The parent session already has an active wait.",
-      );
-    }
-
-    const records: LiveRecord[] = [];
-    for (const sessionId of params.session_ids) {
-      const record = isSessionId(sessionId)
-        ? this.records.get(sessionId)
-        : undefined;
-      if (!record || record.namespace !== namespace) {
-        throw new MinimalSubagentsError(
-          "SESSION_NOT_FOUND",
-          "The session was not found.",
-        );
-      }
-      records.push(record);
-    }
-
-    let resolvePromise!: (result: SubagentWaitResult) => void;
-    let rejectPromise!: (error: unknown) => void;
-    const promise = new Promise<SubagentWaitResult>((resolve, reject) => {
-      resolvePromise = resolve;
-      rejectPromise = reject;
-    });
-    const onAbort = () => {
-      waiter.reject(
-        new MinimalSubagentsError(
-          "INTERNAL_ERROR",
-          "The parent operation was aborted.",
-        ),
-      );
-    };
-    const waiter: ActiveWait = {
-      namespace,
-      records,
-      settled: false,
-      resolve: (result) => {
-        if (waiter.settled) return;
-        waiter.settled = true;
-        waiter.dispose();
-        resolvePromise(result);
-      },
-      reject: (error) => {
-        if (waiter.settled) return;
-        waiter.settled = true;
-        waiter.dispose();
-        rejectPromise(error);
-      },
-      dispose: () => {
-        if (this.activeWaits.get(namespace) === waiter) {
-          this.activeWaits.delete(namespace);
-        }
-        signal?.removeEventListener("abort", onAbort);
-      },
-    };
-
-    this.activeWaits.set(namespace, waiter);
-    signal?.addEventListener("abort", onAbort, { once: true });
-    if (signal?.aborted) onAbort();
-    else this.refreshWaiter(namespace);
-    return promise;
-  }
-
   private async resume(
     params: SubagentCallParams,
     context: ExtensionContext,
@@ -925,7 +823,6 @@ export class SessionManager implements SessionService, SessionStatusSource {
       this.cancelAdmission(record, () =>
         Object.assign(record, priorProcessState),
       );
-      this.refreshWaiter(record.namespace);
       this.refreshView(record.namespace, context);
       throw new MinimalSubagentsError(
         "INTERNAL_ERROR",
@@ -1028,13 +925,6 @@ export class SessionManager implements SessionService, SessionStatusSource {
   /** Close one parent namespace and await best-effort settlement of all active children. */
   shutdown(context: ExtensionContext): Promise<void> {
     const namespace = namespaceOf(context);
-    this.rejectWaiter(
-      namespace,
-      new MinimalSubagentsError(
-        "INTERNAL_ERROR",
-        "The parent session is shutting down.",
-      ),
-    );
     const existing = this.namespaces.get(namespace);
     if (existing?.shutdown) return existing.shutdown;
 
@@ -1109,11 +999,9 @@ export class SessionManager implements SessionService, SessionStatusSource {
     return binding;
   }
 
-  /** Interrupt an active wait and hide terminal rows at a parent input boundary. */
+  /** Hide terminal rows at a parent input boundary. */
   onParentInput(context: ExtensionContext): void {
     const namespace = namespaceOf(context);
-    const waiter = this.activeWaits.get(namespace);
-    if (waiter) waiter.resolve(this.projectWait(waiter, "interrupted"));
     for (const record of this.records.values()) {
       if (
         record.namespace === namespace &&
@@ -1162,51 +1050,6 @@ export class SessionManager implements SessionService, SessionStatusSource {
         completed_at: snapshot.completed_at,
       }));
     return copy({ active_sessions: active, recent_sessions: recent });
-  }
-
-  private waitSnapshot(record: LiveRecord): PersistedSessionSnapshot {
-    const hasActiveTurn =
-      record.settlement === undefined &&
-      (record.reserved === true ||
-        record.execution !== undefined ||
-        !isTerminalStatus(record.snapshot.status));
-    if (
-      hasActiveTurn &&
-      record.activeSnapshot !== undefined &&
-      !isTerminalStatus(record.activeSnapshot.status)
-    ) {
-      return record.activeSnapshot;
-    }
-    return record.snapshot;
-  }
-
-  private projectWait(
-    waiter: ActiveWait,
-    reason: SubagentWaitResult["reason"],
-  ): SubagentWaitResult {
-    const terminal: SubagentWaitResult["terminal"] = [];
-    const pending: SubagentWaitResult["pending"] = [];
-    for (const record of waiter.records) {
-      const snapshot = this.waitSnapshot(record);
-      const sessionId = snapshot.session_id;
-      if (isTerminalStatus(snapshot.status)) {
-        terminal.push({ session_id: sessionId, status: snapshot.status });
-      } else {
-        pending.push({ session_id: sessionId, status: snapshot.status });
-      }
-    }
-    return { reason, terminal, pending };
-  }
-
-  private refreshWaiter(namespace: string): void {
-    const waiter = this.activeWaits.get(namespace);
-    if (!waiter || waiter.settled) return;
-    const result = this.projectWait(waiter, "completed");
-    if (result.pending.length === 0) waiter.resolve(result);
-  }
-
-  private rejectWaiter(namespace: string, error: unknown): void {
-    this.activeWaits.get(namespace)?.reject(error);
   }
 
   /** Replace one cwd/parent namespace with restart-normalized stored records. */
@@ -1428,7 +1271,8 @@ export class SessionManager implements SessionService, SessionStatusSource {
    * Abort every non-terminal queued/running record in one namespace without
    * closing it. Waiting records never create a child; started records reuse
    * the idempotent child abort. Settlement reuses the terminal `aborted`
-   * publication, slot release, view refresh, and exactly-once push path.
+   * publication, slot release, and view refresh, but the completion push is
+   * suppressed because the parent operation itself was aborted.
    */
   private abortNamespaceRecords(namespace: string): void {
     const targets = [...this.records.values()].filter(
@@ -1491,7 +1335,6 @@ export class SessionManager implements SessionService, SessionStatusSource {
     record.snapshot = copy(aborted);
     record.published = true;
     record.settlement = "terminal";
-    this.refreshWaiter(record.namespace);
     this.releaseSlot(record);
     if (record.context) {
       this.refreshView(record.namespace, record.context);
@@ -1562,7 +1405,6 @@ export class SessionManager implements SessionService, SessionStatusSource {
     record.snapshot = copy(aborted);
     record.published = true;
     record.settlement = "shutdown";
-    this.refreshWaiter(record.namespace);
     this.releaseSlot(record);
     if (record.context) {
       this.refreshView(record.namespace, record.context);
@@ -1899,7 +1741,6 @@ export class SessionManager implements SessionService, SessionStatusSource {
     record.settlement = "terminal";
     record.snapshot = copy(terminal);
     record.published = true;
-    this.refreshWaiter(record.namespace);
     this.releaseSlot(record);
     this.refreshView(record.namespace, context);
     this.pushCompletion(record);
@@ -2094,6 +1935,9 @@ export class SessionManager implements SessionService, SessionStatusSource {
 
   private pushCompletion(record: LiveRecord): void {
     if (record.pushed || !isTerminalStatus(record.snapshot.status)) return;
+    // A parent operation abort settles children as aborted, but must not wake a
+    // new parent turn; shutdown races may still reach here after operation abort.
+    if (record.operationAborted) return;
     record.pushed = true;
     const notifier =
       this.options.notifier ??

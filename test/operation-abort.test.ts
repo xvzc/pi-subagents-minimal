@@ -216,7 +216,7 @@ async function nextTask(): Promise<void> {
 }
 
 describe("004 parent operation abort cascade", () => {
-  it("aborts every running record in the namespace with one push each", async () => {
+  it("aborts every running record in the namespace without pushing a completion", async () => {
     const notify = vi.fn();
     const h = harness({
       createIds: ["00000000-0000-0006", "00000000-0000-000e"],
@@ -264,15 +264,8 @@ describe("004 parent operation abort cascade", () => {
     expect(
       h.calls.filter((call) => call === "abort:00000000-0000-000e"),
     ).toHaveLength(1);
-    expect(notify).toHaveBeenCalledTimes(2);
-    expect(notify).toHaveBeenCalledWith({
-      sessionId: "00000000-0000-0006",
-      status: "aborted",
-    });
-    expect(notify).toHaveBeenCalledWith({
-      sessionId: "00000000-0000-000e",
-      status: "aborted",
-    });
+    expect(pushesFor(notify, "00000000-0000-0006")).toHaveLength(0);
+    expect(pushesFor(notify, "00000000-0000-000e")).toHaveLength(0);
   });
 
   it("aborts queued records without creating their child", async () => {
@@ -326,7 +319,7 @@ describe("004 parent operation abort cascade", () => {
     expect(
       h.calls.filter((call) => call.startsWith("create-child")),
     ).toHaveLength(1);
-    expect(notify).toHaveBeenCalledTimes(2);
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("leaves other namespaces running and admits later independent calls", async () => {
@@ -441,11 +434,7 @@ describe("004 parent operation abort cascade", () => {
         error: { code: "PARENT_SHUTDOWN" },
       });
     });
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith({
-      sessionId: "00000000-0000-003b",
-      status: "aborted",
-    });
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("binds a shared signal once and stays effective after execute returns", async () => {
@@ -488,7 +477,7 @@ describe("004 parent operation abort cascade", () => {
         status: "aborted",
       });
     });
-    expect(notify).toHaveBeenCalledTimes(2);
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("keeps a natural completion exactly once when abort races settlement", async () => {
@@ -638,12 +627,7 @@ describe("004 parent operation abort cascade", () => {
           ),
         ).toBe(false);
       }
-      expect(notify).toHaveBeenCalledTimes(1);
-      expect(notify).toHaveBeenCalledWith({
-        sessionId: "00000000-0000-005b",
-        status: "aborted",
-      });
-      expect(pushesFor(notify, "00000000-0000-005b")).toHaveLength(1);
+      expect(notify).not.toHaveBeenCalled();
     },
   );
 
@@ -708,11 +692,7 @@ describe("004 parent operation abort cascade", () => {
       status: "aborted",
     });
     expect(abortedWritesFor(h, "00000000-0000-0042")).toHaveLength(1);
-    expect(progressNotify).toHaveBeenCalledTimes(1);
-    expect(progressNotify).toHaveBeenCalledWith({
-      sessionId: "00000000-0000-0042",
-      status: "aborted",
-    });
+    expect(progressNotify).not.toHaveBeenCalled();
   });
 
   it("holds the slot through blocked creation, then aborts the created child once", async () => {
@@ -802,9 +782,8 @@ describe("004 parent operation abort cascade", () => {
     expect(
       h.calls.filter((entry) => entry === "abort:00000000-0000-0013"),
     ).toHaveLength(1);
-    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).not.toHaveBeenCalled();
     expect(abortedWritesFor(h, "00000000-0000-0013")).toHaveLength(1);
-    expect(pushesFor(notify, "00000000-0000-0013")).toHaveLength(1);
   });
 
   it("does not roll back a resume when its queued write rejects after abort", async () => {
@@ -860,11 +839,7 @@ describe("004 parent operation abort cascade", () => {
       session_id: "00000000-0000-004d",
       status: "aborted",
     });
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith({
-      sessionId: "00000000-0000-004d",
-      status: "aborted",
-    });
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it("completes abort and shutdown concurrently without duplicate settlement", async () => {
@@ -891,13 +866,8 @@ describe("004 parent operation abort cascade", () => {
       status: "aborted",
       error: { code: "PARENT_SHUTDOWN" },
     });
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith({
-      sessionId: "00000000-0000-003c",
-      status: "aborted",
-    });
+    expect(pushesFor(notify, "00000000-0000-003c")).toHaveLength(0);
     expect(abortedWritesFor(h, "00000000-0000-003c")).toHaveLength(1);
-    expect(pushesFor(notify, "00000000-0000-003c")).toHaveLength(1);
   });
 
   it("associates one shared signal with two namespaces while isolating a third", async () => {
@@ -977,13 +947,8 @@ describe("004 parent operation abort cascade", () => {
     expect(abortedWritesFor(h, "00000000-0000-0036")).toHaveLength(1);
     expect(abortedWritesFor(h, "00000000-0000-0037")).toHaveLength(1);
     expect(abortedWritesFor(h, "00000000-0000-0039")).toHaveLength(0);
-    expect(notify).toHaveBeenCalledTimes(2);
-    expect(pushesFor(notify, "00000000-0000-0036")).toEqual([
-      { sessionId: "00000000-0000-0036", status: "aborted" },
-    ]);
-    expect(pushesFor(notify, "00000000-0000-0037")).toEqual([
-      { sessionId: "00000000-0000-0037", status: "aborted" },
-    ]);
+    expect(pushesFor(notify, "00000000-0000-0036")).toHaveLength(0);
+    expect(pushesFor(notify, "00000000-0000-0037")).toHaveLength(0);
     expect(pushesFor(notify, "00000000-0000-0039")).toHaveLength(0);
 
     const next = new AbortController();
@@ -1006,7 +971,7 @@ describe("004 parent operation abort cascade", () => {
     });
   });
 
-  it("writes exactly one aborted snapshot and push per queued and running session", async () => {
+  it("writes exactly one aborted snapshot per queued and running session without pushing", async () => {
     const notify = vi.fn();
     const h = harness({
       maxConcurrent: 1,
@@ -1056,16 +1021,11 @@ describe("004 parent operation abort cascade", () => {
     ).toHaveLength(1);
     expect(abortedWritesFor(h, "00000000-0000-004f")).toHaveLength(1);
     expect(abortedWritesFor(h, "00000000-0000-0044")).toHaveLength(1);
-    expect(notify).toHaveBeenCalledTimes(2);
-    expect(pushesFor(notify, "00000000-0000-004f")).toEqual([
-      { sessionId: "00000000-0000-004f", status: "aborted" },
-    ]);
-    expect(pushesFor(notify, "00000000-0000-0044")).toEqual([
-      { sessionId: "00000000-0000-0044", status: "aborted" },
-    ]);
+    expect(pushesFor(notify, "00000000-0000-004f")).toHaveLength(0);
+    expect(pushesFor(notify, "00000000-0000-0044")).toHaveLength(0);
   });
 
-  it("repeating abort notification settles each session only once", async () => {
+  it("repeating abort settles each session only once without pushing", async () => {
     const notify = vi.fn();
     const h = harness({
       createIds: ["00000000-0000-004c"],
@@ -1091,7 +1051,7 @@ describe("004 parent operation abort cascade", () => {
       });
     });
     expect(abortedWritesFor(h, "00000000-0000-004c")).toHaveLength(1);
-    expect(pushesFor(notify, "00000000-0000-004c")).toHaveLength(1);
+    expect(pushesFor(notify, "00000000-0000-004c")).toHaveLength(0);
 
     const repeated = await tool.execute(
       "id-repeat-again",
@@ -1115,8 +1075,7 @@ describe("004 parent operation abort cascade", () => {
       error: { code: "PARENT_SHUTDOWN" },
     });
     expect(abortedWritesFor(h, "00000000-0000-004c")).toHaveLength(1);
-    expect(notify).toHaveBeenCalledTimes(1);
-    expect(pushesFor(notify, "00000000-0000-004c")).toHaveLength(1);
+    expect(pushesFor(notify, "00000000-0000-004c")).toHaveLength(0);
     expect(
       h.calls.filter((call) => call === "abort:00000000-0000-004c"),
     ).toHaveLength(1);

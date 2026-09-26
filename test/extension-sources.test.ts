@@ -208,8 +208,8 @@ describe("local extension resolution", () => {
     await expect(
       resolveExtensionSources(["path:packages/selected"], cwd, agentDir),
     ).resolves.toEqual([
-      realpathSync(join(selected, "extensions", "one.ts")),
       realpathSync(join(selected, "extensions", "nested", "two.ts")),
+      realpathSync(join(selected, "extensions", "one.ts")),
     ]);
   });
 

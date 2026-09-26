@@ -1278,3 +1278,61 @@ describe("Agents view", () => {
     ).not.toThrow();
   });
 });
+
+const AGENTS_WIDGET_FRAMES = ["⠐", "⠰", "⠴", "⠶", "⠶", "⠦", "⠖", "⠒", "⠐"];
+
+describe("spinner frames", () => {
+  it("animates the Agents widget through exactly the nine required frames", () => {
+    vi.useFakeTimers();
+    try {
+      const row: AgentViewRow = {
+        session_id: "00000000-0000-0006",
+        agent: "worker",
+        label: "do work",
+        elapsedMs: 0,
+        phase: "working · turn 1",
+        turns: 1,
+        createdAt: "2026-01-01T00:00:00.000Z",
+      };
+      const fakeTheme = {
+        fg: (color: string, text: string) => `<${color}>${text}</${color}>`,
+        bold: (text: string) => text,
+      } as Theme;
+      let component: { render(): string[] } | undefined;
+      const setWidget = vi.fn((_key: string, factory: unknown) => {
+        if (typeof factory === "function") {
+          component = (
+            factory as (
+              tui: { requestRender(): void },
+              theme: Theme,
+            ) => { render(): string[] }
+          )({ requestRender: vi.fn() }, fakeTheme);
+        }
+      });
+      const view = new AgentsView(
+        { setWidget } as unknown as ExtensionContext["ui"],
+        () => [row],
+      );
+      view.refresh();
+      const seen: string[] = [];
+      for (let tick = 0; tick < AGENTS_WIDGET_FRAMES.length; tick += 1) {
+        const line = component?.render()[1] ?? "";
+        expect(line).toContain(
+          `<accent>${AGENTS_WIDGET_FRAMES[tick]}</accent>`,
+        );
+        seen.push(line);
+        vi.advanceTimersByTime(80);
+      }
+      // The tenth tick wraps back to the first frame: no trailing blank.
+      expect(component?.render()[1]).toContain(
+        `<accent>${AGENTS_WIDGET_FRAMES[0]}</accent>`,
+      );
+      for (const line of seen) {
+        expect(line).not.toContain("<accent> </accent>");
+      }
+      view.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

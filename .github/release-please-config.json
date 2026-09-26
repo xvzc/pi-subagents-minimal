@@ -3,7 +3,7 @@
   "packages": {
     ".": {
       "release-type": "node",
-      "package-name": "pi-subagents-minimal",
+      "package-name": "@xvzc/pi-subagents-minimal",
       "include-component-in-tag": false
     }
   }
