@@ -69,9 +69,9 @@ jobs:
       - name: Build
         run: npm run build
 
-  # The peerDependencies declare the floor (`>=0.84.0`) for pi-coding-agent and pi-tui,
-  # while pi-ai is a direct dependency (`^0.84.2`). This job holds the peers at the
-  # 0.84.0 floor and pi-ai at the 0.84.2 baseline to guard the lowest supported mix.
+  # The peerDependencies declare the floor (`>=0.86.1`) for pi-coding-agent and pi-tui,
+  # while pi-ai is a direct dependency (`0.86.1`). This job holds all three
+  # packages at the 0.86.1 floor to guard the lowest supported mix.
   compat-floor-pi:
     name: compat-floor-pi
     runs-on: ubuntu-latest
@@ -89,7 +89,7 @@ jobs:
         run: npm ci
 
       - name: Install floor Pi
-        run: npm install --no-save @earendil-works/pi-coding-agent@0.84.0 @earendil-works/pi-ai@0.84.2 @earendil-works/pi-tui@0.84.0
+        run: npm install --no-save @earendil-works/pi-coding-agent@0.86.1 @earendil-works/pi-ai@0.86.1 @earendil-works/pi-tui@0.86.1
 
       - name: Typecheck against floor Pi
         run: npm run typecheck
