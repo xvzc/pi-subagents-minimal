@@ -18,6 +18,7 @@ import type {
   StoredUsage,
 } from "../storage/schemas.js";
 import type { ThinkingLevel } from "../types.js";
+import { failureMessage } from "./failure-cause.js";
 
 export const CHILD_TOOL_NAMES = Object.freeze([
   ...new Set([
@@ -345,6 +346,7 @@ export function createPiChildSessionFactory(): ChildSessionFactory {
           let pendingInput = 0;
           let pendingOutput = 0;
           let failureDiagnostic: StoredErrorDiagnostic | undefined;
+          let failureCause: unknown;
           let aborted = false;
           let maxTurnsReached = false;
           let output: string | undefined;
@@ -391,6 +393,11 @@ export function createPiChildSessionFactory(): ChildSessionFactory {
                 assistant_turn: turns,
                 stop_reason: event.message.stopReason,
               };
+              try {
+                failureCause = event.message.errorMessage;
+              } catch {
+                failureCause = undefined;
+              }
             }
             if (event.message.stopReason === "aborted") aborted = true;
             progress?.(observe());
@@ -424,9 +431,10 @@ export function createPiChildSessionFactory(): ChildSessionFactory {
               expandPromptTemplates: false,
               source: "extension",
             });
-          } catch {
+          } catch (error) {
             if (failureDiagnostic === undefined) {
               failureDiagnostic = { phase: "prompt_throw" };
+              failureCause = error;
             }
           } finally {
             unsubscribe();
@@ -434,7 +442,19 @@ export function createPiChildSessionFactory(): ChildSessionFactory {
           return {
             ...observe(),
             ...(failureDiagnostic !== undefined
-              ? { error: { ...ASSISTANT_ERROR, diagnostic: failureDiagnostic } }
+              ? {
+                  error: {
+                    code: ASSISTANT_ERROR.code,
+                    message: failureMessage(
+                      ASSISTANT_ERROR.message,
+                      failureCause,
+                      failureDiagnostic.phase === "assistant_stop"
+                        ? "assistant_stop"
+                        : "unknown",
+                    ),
+                    diagnostic: failureDiagnostic,
+                  },
+                }
               : {}),
             ...(aborted ? { aborted: true } : {}),
             ...(maxTurnsReached ? { maxTurnsReached: true } : {}),

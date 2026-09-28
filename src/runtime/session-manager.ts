@@ -49,6 +49,7 @@ import {
   type AsyncCompletionNotifier,
   createHostNotifier,
 } from "./completion-notify.js";
+import { failureMessage } from "./failure-cause.js";
 import { resolveInvocationModelThinking } from "./invocation-resolver.js";
 
 export const MAX_TURNS_ERROR: StoredError = Object.freeze({
@@ -237,12 +238,16 @@ function warning(suppliedSessionId: string | undefined) {
 function failedSnapshot(
   snapshot: PersistedSessionSnapshot,
   completedAt: string,
+  cause?: unknown,
 ): PersistedSessionSnapshot {
   return {
     ...snapshot,
     status: "failed",
     completed_at: completedAt,
-    error: { ...CHILD_START_ERROR },
+    error: {
+      code: CHILD_START_ERROR.code,
+      message: failureMessage(CHILD_START_ERROR.message, cause),
+    },
   };
 }
 
@@ -1677,7 +1682,7 @@ export class SessionManager implements SessionService, SessionStatusSource {
     try {
       const promptSettlement = child.prompt(prompt, refresh).then(
         (observation) => ({ kind: "observation" as const, observation }),
-        () => ({ kind: "error" as const }),
+        (error: unknown) => ({ kind: "error" as const, error }),
       );
       const outcome = record.shutdownSignal
         ? await Promise.race([
@@ -1698,7 +1703,7 @@ export class SessionManager implements SessionService, SessionStatusSource {
       }
       terminal =
         outcome.kind === "error"
-          ? failedSnapshot(running, this.now())
+          ? failedSnapshot(running, this.now(), outcome.error)
           : terminalSnapshot(running, outcome.observation, this.now());
     } catch {
       await progressWrites;

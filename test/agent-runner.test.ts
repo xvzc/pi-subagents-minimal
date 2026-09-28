@@ -510,6 +510,130 @@ describe("Pi child runner", () => {
     });
   });
 
+  it("classifies provider assistant stops but ignores unsafe error getters", async () => {
+    let listener: AgentSessionEventListener | undefined;
+    let errorMessage =
+      "401 Unauthorized: Incorrect API key provided: sk-live-SECRET";
+    let throwOnRead = false;
+    sdk.session = {
+      agent: {},
+      subscribe(next: AgentSessionEventListener) {
+        listener = next;
+        return () => undefined;
+      },
+      async prompt() {
+        listener?.({
+          type: "turn_end",
+          message: {
+            role: "assistant",
+            content: [],
+            stopReason: "error",
+            get errorMessage() {
+              if (throwOnRead) throw new Error("secret getter");
+              return errorMessage;
+            },
+          },
+          toolResults: [],
+        } as never);
+      },
+      async steer() {},
+      async abort() {},
+      getSessionStats: () => ({
+        assistantMessages: 1,
+        toolCalls: 0,
+        tokens: { total: 0 },
+      }),
+      getLastAssistantText: () => "",
+    };
+    const concrete = fakeModel();
+    const handle = await createPiChildSessionFactory().create({
+      id: "00000000-0000-001f",
+      cwd: "/project",
+      agentDir: "/agent-dir",
+      parentSessionId: "parent",
+      model: concrete,
+      modelRegistry: { find: () => concrete } as unknown as ModelRegistry,
+      thinking: "off",
+      systemPrompt: "Child prompt.",
+    });
+
+    const observation = await handle.prompt("go");
+    expect(observation.error).toMatchObject({
+      code: "CHILD_EXECUTION_FAILED",
+      message:
+        "The child assistant turn failed: model request authentication failed.",
+      diagnostic: {
+        phase: "assistant_stop",
+        assistant_turn: 1,
+        stop_reason: "error",
+      },
+    });
+    expect(observation.error?.message).not.toContain("sk-live-SECRET");
+    expect(observation.error?.message).not.toContain("Incorrect API key");
+    errorMessage = "rate limit exceeded: sk-live-SECRET";
+    expect((await handle.prompt("go")).error?.message).toBe(
+      "The child assistant turn failed: the model request was rate-limited.",
+    );
+    errorMessage = "step 429 in local cleanup";
+    expect((await handle.prompt("go")).error?.message).toBe(
+      "The child assistant turn failed.",
+    );
+    throwOnRead = true;
+    expect((await handle.prompt("go")).error?.message).toBe(
+      "The child assistant turn failed.",
+    );
+  });
+
+  it("keeps prompt throws generic when origin is unknown", async () => {
+    let cause: unknown = new Error("openai error: 429 rate limit exceeded");
+    sdk.session = {
+      agent: {},
+      subscribe() {
+        return () => undefined;
+      },
+      async prompt() {
+        throw cause;
+      },
+      async steer() {},
+      async abort() {},
+      getSessionStats: () => ({
+        assistantMessages: 0,
+        toolCalls: 0,
+        tokens: { total: 0 },
+      }),
+      getLastAssistantText: () => undefined,
+    };
+    const concrete = fakeModel();
+    const handle = await createPiChildSessionFactory().create({
+      id: "00000000-0000-001f",
+      cwd: "/project",
+      agentDir: "/agent-dir",
+      parentSessionId: "parent",
+      model: concrete,
+      modelRegistry: { find: () => concrete } as unknown as ModelRegistry,
+      thinking: "off",
+      systemPrompt: "Child prompt.",
+    });
+
+    const observation = await handle.prompt("go");
+    expect(observation.error).toMatchObject({
+      code: "CHILD_EXECUTION_FAILED",
+      message: "The child assistant turn failed.",
+      diagnostic: { phase: "prompt_throw" },
+    });
+    cause = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("secret proxy");
+        },
+      },
+    );
+    expect((await handle.prompt("go")).error?.message).toBe(
+      "The child assistant turn failed.",
+    );
+  });
+
   it("ignores provider text and malformed Unicode prompt/output during classification", async () => {
     let listener: AgentSessionEventListener | undefined;
     const prompt = "\ud800 malformed prompt";
