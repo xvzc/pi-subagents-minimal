@@ -218,6 +218,8 @@ export interface SessionService {
     lifecycle?: SessionCallLifecycle,
   ): Promise<unknown>;
   output(params: SubagentOutputParams): Promise<unknown>;
+  /** Volatile UI-only lookup for an output result returned by this service. */
+  providerErrorForOutput?(result: unknown): string | undefined;
   shutdown(context: ExtensionContext): Promise<void>;
 }
 

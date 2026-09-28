@@ -149,6 +149,7 @@ export function renderAgentOutput(
   expanded: boolean,
   theme: Theme,
   raw?: unknown,
+  providerErrorMessage?: string,
 ): Container {
   const container = new Container();
   const error = details.error;
@@ -190,6 +191,16 @@ export function renderAgentOutput(
         const full = expandedText(error);
         if (full.trim() !== reason) {
           container.addChild(new Text(theme.fg("toolOutput", full), 2, 0));
+        }
+      }
+      if (providerErrorMessage !== undefined) {
+        const providerText = expandedText(
+          providerErrorMessage.replace(/\r/g, " "),
+        );
+        if (providerText.trim() !== "") {
+          container.addChild(
+            new Text(theme.fg("toolOutput", providerText), 2, 0),
+          );
         }
       }
     }

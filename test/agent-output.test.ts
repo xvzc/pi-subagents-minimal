@@ -2,6 +2,7 @@ import type { ExtensionAPI, Theme } from "@earendil-works/pi-coding-agent";
 import { describe, expect, it, vi } from "vitest";
 import extension, { createTools } from "../src/index.js";
 import { COMPLETION_MESSAGE_TYPE } from "../src/runtime/completion-notify.js";
+import { renderAgentOutput } from "../src/runtime/agent-output.js";
 import type { ToolServices } from "../src/types.js";
 
 const theme = {
@@ -312,6 +313,27 @@ describe("subagent_output Agent Output rendering", () => {
       "<error>x</error> <toolTitle>Agent Output</toolTitle>",
       "<error>Agent failed.</error>",
     ]);
+  });
+
+  it("omits blank provider text and sanitizes carriage returns in expanded UI", () => {
+    const details = {
+      agent: "reviewer",
+      status: "failed",
+      error: "turn failed",
+    };
+    const baseline = rendered(renderAgentOutput(details, true, theme));
+    expect(
+      rendered(renderAgentOutput(details, true, theme, "", " \r\t ")),
+    ).toBe(baseline);
+    const displayed = rendered(
+      renderAgentOutput(details, true, theme, "", "first\rsecond\u001b[31m"),
+    );
+    expect(displayed).toContain("first second");
+    expect(displayed).not.toContain("\r");
+    expect(displayed).not.toContain("\u001b");
+    expect(
+      rendered(renderAgentOutput(details, false, theme, "", "first\rsecond")),
+    ).toBe(rendered(renderAgentOutput(details, false, theme)));
   });
 
   it("keeps the completion custom type for hidden model-context delivery", () => {

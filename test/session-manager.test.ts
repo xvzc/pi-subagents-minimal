@@ -3385,6 +3385,197 @@ describe("resume and steer", () => {
   });
 });
 
+describe("provider error output isolation", () => {
+  it("renders only the matching expanded result from memory, not tool data or stale entries", async () => {
+    const providerMessage = "Provider detail\nnext line\u001b[31m\u0007";
+    const laterMessage = "Different provider detail";
+    let invocation = 0;
+    const push = vi.fn();
+    const h = harness({
+      notifier: { notify: push },
+      promptImpl: async () => {
+        invocation += 1;
+        return {
+          output: "partial answer",
+          error: {
+            code: "CHILD_EXECUTION_FAILED",
+            message: "The child assistant turn failed.",
+            diagnostic: {
+              phase: "assistant_stop",
+              assistant_turn: 1,
+              stop_reason: "error",
+            },
+          },
+          providerErrorMessage:
+            invocation === 1 ? providerMessage : laterMessage,
+        };
+      },
+    });
+    const accepted = (await callNew(h)) as PersistedSessionSnapshot;
+    const session_id = accepted.session_id;
+    await vi.waitFor(async () =>
+      expect(await h.manager.output({ session_id })).toMatchObject({
+        status: "failed",
+      }),
+    );
+    const tool = createTools({
+      sessions: h.manager,
+      registry: { list: async () => ({ agents: [] }) },
+      status: { status: async () => ({}) },
+    }).find((entry) => entry.name === "subagent_output")!;
+    const result = await tool.execute(
+      "call-id",
+      { session_id },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    const renderResult = (outputResult: typeof result, expanded: boolean) =>
+      tool.renderResult!(
+        outputResult,
+        { expanded, isPartial: false } as never,
+        {
+          fg: (_color: string, text: string) => text,
+          bold: (text: string) => text,
+        } as Theme,
+        {} as never,
+      )
+        ?.render(200)
+        .join("\n") ?? "";
+    const render = (expanded: boolean) => renderResult(result, expanded);
+    expect(render(false)).not.toContain("Provider detail");
+    expect(render(true)).toContain("Provider detail");
+    expect(render(true)).toContain("next line");
+    expect(render(true)).not.toContain("\u001b[31m");
+    expect(render(true)).not.toContain("\u0007");
+    expect(JSON.stringify(result)).not.toContain("Provider detail");
+    expect(JSON.stringify(h.writes)).not.toContain("Provider detail");
+    expect(JSON.stringify(h.manager.sessionStatus())).not.toContain(
+      "Provider detail",
+    );
+    expect(JSON.stringify(push.mock.calls)).not.toContain("Provider detail");
+    expect(JSON.stringify(h.notify.mock.calls)).not.toContain(
+      "Provider detail",
+    );
+
+    await h.manager.call(
+      { type: "resume", session_id, prompt: "again" },
+      h.context,
+    );
+    expect(render(true)).not.toContain("Provider detail");
+    await vi.waitFor(async () => {
+      const current = await h.manager.output({ session_id });
+      expect(h.manager.providerErrorForOutput(current)).toBe(laterMessage);
+    });
+    expect(render(true)).not.toContain("Provider detail");
+    expect(render(true)).not.toContain(laterMessage);
+    const laterResult = await tool.execute(
+      "later-call-id",
+      { session_id },
+      undefined,
+      undefined,
+      {} as never,
+    );
+    expect(renderResult(laterResult, true)).toContain(laterMessage);
+    expect(renderResult(laterResult, true)).not.toContain("Provider detail");
+    expect(renderResult(laterResult, false)).not.toContain(laterMessage);
+    expect(JSON.stringify(laterResult)).not.toContain(laterMessage);
+  });
+
+  it("cannot recover provider text by reloading the actual failed record", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pi-provider-output-"));
+    try {
+      const store = new RecordStore({
+        agentDir: join(root, "agent"),
+        projectPath: "/project",
+        parentSessionId: "parent-session",
+      });
+      const providerMessage = "Transient provider detail";
+      const h = harness({
+        store,
+        observation: {
+          error: {
+            code: "CHILD_EXECUTION_FAILED",
+            message: "The child assistant turn failed.",
+            diagnostic: {
+              phase: "assistant_stop",
+              assistant_turn: 1,
+              stop_reason: "error",
+            },
+          },
+          providerErrorMessage: providerMessage,
+        },
+      });
+      const accepted = (await callNew(h)) as PersistedSessionSnapshot;
+      const session_id = accepted.session_id;
+      await vi.waitFor(async () => {
+        const result = await h.manager.output({ session_id });
+        expect(h.manager.providerErrorForOutput(result)).toBe(providerMessage);
+      });
+      const persisted = await store.loadSessions();
+      expect(persisted.records).toHaveLength(1);
+      expect(JSON.stringify(persisted)).not.toContain(providerMessage);
+      const reloaded = harness({ store });
+      await reloaded.manager.load(reloaded.context);
+      const loaded = await reloaded.manager.output({ session_id });
+      expect(loaded).toMatchObject({ status: "failed" });
+      expect(reloaded.manager.providerErrorForOutput(loaded)).toBeUndefined();
+      expect(JSON.stringify(loaded)).not.toContain(providerMessage);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("does not render a prompt-throw message or another failure's provider field", async () => {
+    const h = harness({
+      observation: {
+        error: {
+          code: "CHILD_EXECUTION_FAILED",
+          message: "The child assistant turn failed.",
+          diagnostic: { phase: "prompt_throw" },
+        },
+        providerErrorMessage: "unrelated exception detail",
+      },
+    });
+    const accepted = (await callNew(h)) as PersistedSessionSnapshot;
+    await vi.waitFor(async () =>
+      expect(
+        await h.manager.output({ session_id: accepted.session_id }),
+      ).toMatchObject({ status: "failed" }),
+    );
+    const result = await h.manager.output({ session_id: accepted.session_id });
+    expect(h.manager.providerErrorForOutput(result)).toBeUndefined();
+
+    const aborted = harness({
+      observation: {
+        aborted: true,
+        error: {
+          code: "CHILD_EXECUTION_FAILED",
+          message: "The child assistant turn failed.",
+          diagnostic: {
+            phase: "assistant_stop",
+            assistant_turn: 1,
+            stop_reason: "error",
+          },
+        },
+        providerErrorMessage: "aborted provider detail",
+      },
+    });
+    const abortedCall = (await callNew(aborted)) as PersistedSessionSnapshot;
+    await vi.waitFor(async () =>
+      expect(
+        await aborted.manager.output({ session_id: abortedCall.session_id }),
+      ).toMatchObject({ status: "aborted" }),
+    );
+    const abortedResult = await aborted.manager.output({
+      session_id: abortedCall.session_id,
+    });
+    expect(
+      aborted.manager.providerErrorForOutput(abortedResult),
+    ).toBeUndefined();
+  });
+});
+
 describe("T5 parent shutdown", () => {
   it("retains a prepared child for resume, then disposes it once on namespace close", async () => {
     const h = harness({

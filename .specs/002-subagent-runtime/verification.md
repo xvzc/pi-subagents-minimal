@@ -13,6 +13,7 @@ T1–T10 are implemented and verified. T10 independent review: **APPROVED**, wit
 | A7 | Resolver tests prove strict unsupported agent/call/config thinking, parent-only clamping, and `INVALID_ARGUMENT` when every thinking layer is absent | PASS |
 | A8 | `test/session-manager.test.ts` namespace shutdown barrier/races/failures including abort rejection with a non-settling prompt and handled late rejection, `test/agent-runner.test.ts` public abort delegation, `test/boot.test.ts` all-reason awaited lifecycle wiring, and `test/storage-record-store.test.ts` restart normalization | PASS |
 | A9 | `test/agent-runner.test.ts` exact assistant-stop versus prompt-throw shapes, unchanged success paths, fixed diagnostic shape with bounded cause-label inspection, provider-text exclusion from diagnostics, and malformed-Unicode classification; `test/failure-cause.test.ts` and `test/session-manager.test.ts` cover safe labels and fallbacks | PASS |
+| A11 | `test/agent-runner.test.ts` proves one guarded getter read and assistant-stop-only capture. `test/session-manager.test.ts` proves expanded-only UI and no tool/push/status/snapshot leakage, reload of a failed record through a real `RecordStore`, failure A → resume → failure B with identical assistant-turn numbers and distinct result identities, and prompt-throw/aborted exclusion. `test/agent-output.test.ts` proves blank-text omission and carriage-return sanitization. Pi HTML `/export` uses the expanded renderer and can save the provider text as accepted in S57. | PASS |
 
 ## T5 Focused Evidence
 

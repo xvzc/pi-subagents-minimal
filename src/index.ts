@@ -664,6 +664,7 @@ export function createTools(services?: Partial<ToolServices>) {
           expanded,
           theme,
           result.details,
+          sessions?.providerErrorForOutput?.(result.details),
         );
       },
     }),

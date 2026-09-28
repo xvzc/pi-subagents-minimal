@@ -317,6 +317,14 @@ function createShutdownSignal(): {
 /** Owns direct session lifecycle, inspection, and session-only status. */
 export class SessionManager implements SessionService, SessionStatusSource {
   private readonly records = new Map<string, LiveRecord>();
+  private readonly outputErrors = new WeakMap<
+    object,
+    {
+      record: LiveRecord;
+      snapshot: PersistedSessionSnapshot;
+      observation: ChildExecutionObservation;
+    }
+  >();
   private readonly sessionIdReservations = new Map<string, string>();
   private readonly namespaces = new Map<string, NamespaceState>();
   private readonly registry: ReturnType<typeof createAgentRegistry>;
@@ -629,7 +637,7 @@ export class SessionManager implements SessionService, SessionStatusSource {
         "The session was not found.",
       );
     }
-    return copy({
+    const result = copy({
       session_id: snapshot.session_id,
       agent: snapshot.agent,
       model: snapshot.model,
@@ -639,6 +647,36 @@ export class SessionManager implements SessionService, SessionStatusSource {
       ...(snapshot.error !== undefined ? { error: snapshot.error } : {}),
       ...(snapshot.usage !== undefined ? { usage: snapshot.usage } : {}),
     });
+    if (
+      record &&
+      record.settlement === "terminal" &&
+      snapshot.status === "failed" &&
+      snapshot.error?.diagnostic?.phase === "assistant_stop" &&
+      record.observation?.error?.diagnostic?.phase === "assistant_stop" &&
+      record.observation.error.diagnostic.assistant_turn ===
+        snapshot.error.diagnostic.assistant_turn &&
+      typeof record.observation.providerErrorMessage === "string"
+    ) {
+      this.outputErrors.set(result, {
+        record,
+        snapshot,
+        observation: record.observation,
+      });
+    }
+    return result;
+  }
+
+  providerErrorForOutput(result: unknown): string | undefined {
+    if (!result || typeof result !== "object") return undefined;
+    const match = this.outputErrors.get(result);
+    if (!match) return undefined;
+    const { record, snapshot, observation } = match;
+    return this.records.get(snapshot.session_id) === record &&
+      record.snapshot === snapshot &&
+      record.observation === observation &&
+      record.settlement === "terminal"
+      ? observation.providerErrorMessage
+      : undefined;
   }
 
   private async resume(

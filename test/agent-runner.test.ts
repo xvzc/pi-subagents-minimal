@@ -515,6 +515,7 @@ describe("Pi child runner", () => {
     let errorMessage =
       "401 Unauthorized: Incorrect API key provided: sk-live-SECRET";
     let throwOnRead = false;
+    let getterReads = 0;
     sdk.session = {
       agent: {},
       subscribe(next: AgentSessionEventListener) {
@@ -529,6 +530,7 @@ describe("Pi child runner", () => {
             content: [],
             stopReason: "error",
             get errorMessage() {
+              getterReads += 1;
               if (throwOnRead) throw new Error("secret getter");
               return errorMessage;
             },
@@ -570,6 +572,8 @@ describe("Pi child runner", () => {
     });
     expect(observation.error?.message).not.toContain("sk-live-SECRET");
     expect(observation.error?.message).not.toContain("Incorrect API key");
+    expect(observation.providerErrorMessage).toBe(errorMessage);
+    expect(getterReads).toBe(1);
     errorMessage = "rate limit exceeded: sk-live-SECRET";
     expect((await handle.prompt("go")).error?.message).toBe(
       "The child assistant turn failed: the model request was rate-limited.",
@@ -579,9 +583,11 @@ describe("Pi child runner", () => {
       "The child assistant turn failed.",
     );
     throwOnRead = true;
-    expect((await handle.prompt("go")).error?.message).toBe(
+    const inaccessible = await handle.prompt("go");
+    expect(inaccessible.error?.message).toBe(
       "The child assistant turn failed.",
     );
+    expect(inaccessible.providerErrorMessage).toBeUndefined();
   });
 
   it("keeps prompt throws generic when origin is unknown", async () => {
@@ -736,6 +742,7 @@ describe("Pi child runner", () => {
         },
       });
       expect(observation.error?.diagnostic).toEqual({ phase: "prompt_throw" });
+      expect(observation.providerErrorMessage).toBeUndefined();
     }
   });
 

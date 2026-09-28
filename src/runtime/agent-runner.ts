@@ -63,6 +63,8 @@ export interface ChildExecutionObservation {
   usage?: StoredUsage;
   /** Confirmed usage for this prompt invocation; never persisted. */
   widgetUsage?: { turns: number; input: number; output: number };
+  /** Provider error for the expanded output UI only; never persisted. */
+  providerErrorMessage?: string;
   error?: StoredError;
   aborted?: boolean;
   maxTurnsReached?: boolean;
@@ -455,6 +457,10 @@ export function createPiChildSessionFactory(): ChildSessionFactory {
                     diagnostic: failureDiagnostic,
                   },
                 }
+              : {}),
+            ...(failureDiagnostic?.phase === "assistant_stop" &&
+            typeof failureCause === "string"
+              ? { providerErrorMessage: failureCause }
               : {}),
             ...(aborted ? { aborted: true } : {}),
             ...(maxTurnsReached ? { maxTurnsReached: true } : {}),
