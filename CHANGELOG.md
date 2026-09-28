@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/xvzc/pi-subagents-minimal/compare/v1.0.2...v1.0.3) (2026-09-28)
+
+
+### Bug Fixes
+
+* show child provider errors in expanded output ([b973250](https://github.com/xvzc/pi-subagents-minimal/commit/b973250bd8221222ff86ba4eca5b53d66a0abad0))
+
 ## [1.0.2](https://github.com/xvzc/pi-subagents-minimal/compare/v1.0.1...v1.0.2) (2026-09-28)
 
 
