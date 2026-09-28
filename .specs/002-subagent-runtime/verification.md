@@ -12,7 +12,7 @@ T1–T10 are implemented and verified. T10 independent review: **APPROVED**, wit
 | A6 | Shared resolver and manager tests prove independent activation-snapshot agent → call → config → current-parent precedence for new and resume, including agent dominance over supplied blank/call values | PASS |
 | A7 | Resolver tests prove strict unsupported agent/call/config thinking, parent-only clamping, and `INVALID_ARGUMENT` when every thinking layer is absent | PASS |
 | A8 | `test/session-manager.test.ts` namespace shutdown barrier/races/failures including abort rejection with a non-settling prompt and handled late rejection, `test/agent-runner.test.ts` public abort delegation, `test/boot.test.ts` all-reason awaited lifecycle wiring, and `test/storage-record-store.test.ts` restart normalization | PASS |
-| A9 | `test/agent-runner.test.ts` exact assistant-stop versus prompt-throw shapes, unchanged success paths, complete provider raw/error and thrown-value omission, and malformed-Unicode classification | PASS |
+| A9 | `test/agent-runner.test.ts` exact assistant-stop versus prompt-throw shapes, unchanged success paths, fixed diagnostic shape with bounded cause-label inspection, provider-text exclusion from diagnostics, and malformed-Unicode classification; `test/failure-cause.test.ts` and `test/session-manager.test.ts` cover safe labels and fallbacks | PASS |
 
 ## T5 Focused Evidence
 
@@ -48,12 +48,17 @@ Vitest emitted the repository's existing Vite `configLoader: 'native'` future-co
 
 Independent final review: **APPROVED**. No critical or major findings remain after two bounded rework rounds. The sole minor documentation finding (the component tree named a nonexistent `session-snapshots.ts`) was corrected to `status-service.ts`.
 
-## T6 Evidence
+## T6 Evidence (original implementation)
 
-- Installed Pi 0.84.2 types expose assistant `stopReason`, optional `rawStopReason`, and optional `errorMessage` on `turn_end`; prompt rejection exposes its thrown value. Runtime code reads only normalized `stopReason` and never inspects or retains either provider text field or the thrown value.
-- Regressions prove provider-controlled raw/error text and malformed Unicode prompts/output cannot alter classification or enter diagnostics.
+- Installed Pi 0.84.2 types expose assistant `stopReason`, optional `rawStopReason`, and optional `errorMessage` on `turn_end`; prompt rejection exposes its thrown value. The original implementation read only normalized `stopReason` and did not inspect provider text or thrown values; later cause-label behavior is described below.
+- Original regressions proved provider-controlled raw/error text and malformed Unicode prompts/output could not alter phase/turn/stop diagnostics.
 - Focused tests: `npx vitest run test/agent-runner.test.ts test/storage-schemas.test.ts` — PASS (2 files, 24 tests).
 - Full checks: `npm run lint`, `npm run typecheck`, `npm run test`, and `npm run build` — PASS (20 test files, 474 tests).
+
+## Safe cause-label update
+
+- The current implementation inspects bounded assistant-stop error text and prompt-rejection causes only to choose fixed, non-provider-controlled error-message labels. The phase/turn/stop diagnostic stays unchanged. Unrecognized or inaccessible text falls back to the original generic message; creation, reconfiguration, and storage errors remain generic.
+- Tests in `test/failure-cause.test.ts`, `test/agent-runner.test.ts`, and `test/session-manager.test.ts` cover categorization, secret exclusion, throwing accessors, ambiguous bare status codes, local-failure fallback, and retained output. Real-provider cause formats are not exhaustively verified; heuristic labels can misidentify ambiguous messages.
 
 ## Limitations
 

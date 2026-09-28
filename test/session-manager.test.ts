@@ -846,6 +846,152 @@ describe("background new session", () => {
     ]);
   });
 
+  it("keeps pre-prompt failures generic and labels prompt network failures neutrally", async () => {
+    const startup = harness({
+      beforeCreateReturn: async () => {
+        throw new Error("401 Unauthorized: invalid API key sk-live-SECRET");
+      },
+    });
+    expect(await callNew(startup)).toMatchObject({ status: "queued" });
+    await vi.waitFor(async () => {
+      expect(
+        await startup.manager.output({ session_id: "00000000-0000-001f" }),
+      ).toMatchObject({
+        status: "failed",
+        error: {
+          code: "CHILD_EXECUTION_FAILED",
+          message: "The child session could not be executed.",
+        },
+      });
+    });
+    const startupFailure = await startup.manager.output({
+      session_id: "00000000-0000-001f",
+    });
+    expect(JSON.stringify(startupFailure)).not.toContain("sk-live-SECRET");
+    expect(JSON.stringify(startupFailure)).not.toContain("Unauthorized");
+
+    const prompt = harness({
+      promptImpl: () => Promise.reject(new Error("fetch failed")),
+    });
+    expect(await callNew(prompt)).toMatchObject({ status: "queued" });
+    await vi.waitFor(async () => {
+      expect(
+        await prompt.manager.output({ session_id: "00000000-0000-001f" }),
+      ).toMatchObject({
+        status: "failed",
+        error: {
+          code: "CHILD_EXECUTION_FAILED",
+          message:
+            "The child session could not be executed: a network request failed.",
+        },
+      });
+    });
+
+    const unrecognized = harness({
+      promptImpl: () =>
+        Promise.reject(
+          new Error("Authorization: Bearer sk-live-SECRET at /private/file.ts"),
+        ),
+    });
+    expect(await callNew(unrecognized)).toMatchObject({ status: "queued" });
+    await vi.waitFor(async () => {
+      expect(
+        await unrecognized.manager.output({
+          session_id: "00000000-0000-001f",
+        }),
+      ).toMatchObject({
+        status: "failed",
+        error: {
+          code: "CHILD_EXECUTION_FAILED",
+          message: "The child session could not be executed.",
+        },
+      });
+    });
+    const unrecognizedFailure = await unrecognized.manager.output({
+      session_id: "00000000-0000-001f",
+    });
+    expect(JSON.stringify(unrecognizedFailure)).not.toContain("sk-live-SECRET");
+  });
+
+  it("persists generic failures for local writes, ambiguous errors, and throwing getters", async () => {
+    const storage = harness({
+      writeImpl: async (snapshot) => {
+        if (snapshot.status === "running") {
+          throw new Error("429 rate limit exceeded: sk-live-SECRET");
+        }
+      },
+    });
+    await callNew(storage);
+    await vi.waitFor(async () => {
+      expect(
+        await storage.manager.output({ session_id: "00000000-0000-001f" }),
+      ).toMatchObject({
+        status: "failed",
+        error: { message: "The child session could not be executed." },
+      });
+    });
+    expect(storage.writes.map((entry) => entry.status)).toEqual([
+      "queued",
+      "failed",
+    ]);
+
+    const proxy = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("secret proxy getter");
+        },
+      },
+    );
+    const startup = harness({
+      beforeCreateReturn: async () => {
+        throw proxy;
+      },
+    });
+    await callNew(startup);
+    await vi.waitFor(async () => {
+      expect(
+        await startup.manager.output({ session_id: "00000000-0000-001f" }),
+      ).toMatchObject({
+        status: "failed",
+        error: { message: "The child session could not be executed." },
+      });
+    });
+
+    const prompt = harness({ promptImpl: () => Promise.reject(proxy) });
+    await callNew(prompt);
+    await vi.waitFor(async () => {
+      expect(
+        await prompt.manager.output({ session_id: "00000000-0000-001f" }),
+      ).toMatchObject({
+        status: "failed",
+        error: { message: "The child session could not be executed." },
+      });
+    });
+    expect(prompt.writes.map((entry) => entry.status)).toEqual([
+      "queued",
+      "running",
+      "failed",
+    ]);
+
+    const throwingCause = {
+      message: "fetch failed",
+      get cause(): unknown {
+        throw new Error("secret getter");
+      },
+    };
+    const nested = harness({ promptImpl: () => Promise.reject(throwingCause) });
+    await callNew(nested);
+    await vi.waitFor(async () => {
+      expect(
+        await nested.manager.output({ session_id: "00000000-0000-001f" }),
+      ).toMatchObject({
+        status: "failed",
+        error: { message: "The child session could not be executed." },
+      });
+    });
+  });
+
   it("returns queued acceptance promptly and identifies the agent only after child creation", async () => {
     const createGate = deferred<void>();
     const promptGate = deferred<ChildExecutionObservation>();
@@ -2792,7 +2938,7 @@ describe("resume and steer", () => {
       parentModel: original,
       catalog: [original],
       configureImpl: async () => {
-        throw new Error("provider secret");
+        throw new Error("429 rate limit exceeded: sk-live-SECRET");
       },
     });
     await callNew(failing);
@@ -2817,6 +2963,7 @@ describe("resume and steer", () => {
       ).toMatchObject({
         status: "failed",
         thinking: "high",
+        error: { message: "The child session could not be executed." },
       });
     });
     expect(failing.calls).toContain("configure:-:high");
