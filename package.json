@@ -3,6 +3,10 @@
   "version": "1.0.1",
   "description": "A minimal pi extension for subagent invocation and inspection.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xvzc/pi-subagents-minimal"
+  },
   "files": [
     "src"
   ],
