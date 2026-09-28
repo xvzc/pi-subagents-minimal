@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/xvzc/pi-subagents-minimal/compare/v1.0.0...v1.0.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* classify subagent failure causes with safe labels ([72c5b1c](https://github.com/xvzc/pi-subagents-minimal/commit/72c5b1cab231dcb825c09f2c4e937f4c4ebdf9c6))
+* classify subagent failure causes with safe labels ([30da777](https://github.com/xvzc/pi-subagents-minimal/commit/30da777e70aa9275f1e61e54081e7bd6960b2261))
+
 ## [1.0.0](https://github.com/xvzc/pi-subagents-minimal/compare/v0.1.0...v1.0.0) (2026-09-26)
 
 
