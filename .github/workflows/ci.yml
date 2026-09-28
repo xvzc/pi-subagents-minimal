@@ -15,9 +15,11 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Release-please PRs only update release metadata. Keep CI for regular PRs and
+# main pushes; a bot PR from the release-please branch skips every job.
 jobs:
   commitlint:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && !(github.event.pull_request.user.login == 'github-actions[bot]' && startsWith(github.head_ref, 'release-please--branches--main--components--'))
     name: commitlint
     runs-on: ubuntu-latest
     env:
@@ -48,6 +50,7 @@ jobs:
         run: npm run commitlint -- --from "$BASE_SHA" --to "$HEAD_SHA" --verbose
 
   validate:
+    if: github.event_name == 'push' || !(github.event.pull_request.user.login == 'github-actions[bot]' && startsWith(github.head_ref, 'release-please--branches--main--components--'))
     name: validate
     runs-on: ubuntu-latest
     steps:
@@ -73,6 +76,7 @@ jobs:
   # while pi-ai is a direct dependency (`0.86.1`). This job holds all three
   # packages at the 0.86.1 floor to guard the lowest supported mix.
   compat-floor-pi:
+    if: github.event_name == 'push' || !(github.event.pull_request.user.login == 'github-actions[bot]' && startsWith(github.head_ref, 'release-please--branches--main--components--'))
     name: compat-floor-pi
     runs-on: ubuntu-latest
     steps:
@@ -100,6 +104,7 @@ jobs:
   # Forward canary: surface incompatibilities with the newest Pi release without making
   # an untested future version a hard support guarantee.
   compat-latest-pi:
+    if: github.event_name == 'push' || !(github.event.pull_request.user.login == 'github-actions[bot]' && startsWith(github.head_ref, 'release-please--branches--main--components--'))
     name: compat-latest-pi
     runs-on: ubuntu-latest
     continue-on-error: true
