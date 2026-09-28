@@ -74,6 +74,12 @@ export const SubagentCallSchema = Type.Object(
           'Optional existing directory to use as the isolated working directory (cwd) for a new session. Use this only when an isolated workspace is needed, such as for parallel write operations that could otherwise conflict. Tools and file access operate from this directory, while agent configuration, skills, extensions, session storage, namespace, and cleanup remain rooted at the parent cwd. Omit to use the parent cwd. Only valid for type: "new"; "resume" and "steer" reject this field.',
       }),
     ),
+    label: Type.Optional(
+      Type.String({
+        description:
+          'Optional concise widget task name for a new or resumed session. Express the task as concisely as possible. Omit to derive the widget name from the prompt. Silently ignored for "steer".',
+      }),
+    ),
     prompt: Type.String({
       description:
         "Instruction, continuation, correction, or steering instruction. Keep it within parent/user authorization, preserve unrelated work, NEVER include secrets.",

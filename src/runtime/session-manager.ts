@@ -222,6 +222,17 @@ function ownsLiveSession(record: LiveRecord): boolean {
   );
 }
 
+function resolveTaskLabel(label: string | undefined, prompt: string): string {
+  if (label === undefined) return deriveLabel(prompt);
+  if (label.trim() === "") {
+    throw new MinimalSubagentsError(
+      "INVALID_ARGUMENT",
+      "label must be non-empty.",
+    );
+  }
+  return deriveLabel(label);
+}
+
 function warning(suppliedSessionId: string | undefined) {
   return suppliedSessionId === undefined
     ? {}
@@ -415,6 +426,7 @@ export class SessionManager implements SessionService, SessionStatusSource {
         `Enabled agent "${params.agent}" was not found.`,
       );
     }
+    const taskLabel = resolveTaskLabel(params.label, prompt);
 
     const catalog = context.modelRegistry.getAll();
     const resolved = resolveInvocationModelThinking({
@@ -536,7 +548,7 @@ export class SessionManager implements SessionService, SessionStatusSource {
         store,
         context,
         published: false,
-        taskLabel: deriveLabel(prompt),
+        taskLabel,
         widgetVisible: true,
         ...(preparationOwner !== undefined
           ? { extensionPreparation: preparationOwner }
@@ -736,6 +748,7 @@ export class SessionManager implements SessionService, SessionStatusSource {
         "The session has no live conversation to resume.",
       );
     }
+    const taskLabel = resolveTaskLabel(params.label, prompt);
 
     const currentAgent = this.registry.findCurrent(record.snapshot.agent);
     const resolved = resolveInvocationModelThinking({
@@ -830,7 +843,7 @@ export class SessionManager implements SessionService, SessionStatusSource {
     record.store = store;
     record.context = context;
     record.activeSnapshot = copy(queued);
-    record.taskLabel = deriveLabel(prompt);
+    record.taskLabel = taskLabel;
     record.pushed = false;
     record.published = false;
     record.widgetVisible = true;
@@ -921,6 +934,7 @@ export class SessionManager implements SessionService, SessionStatusSource {
         "steer cannot change agent, model, thinking, or workspaceDir.",
       );
     }
+    // params.label is silently ignored and never updates the widget task label.
     if (params.session_id === undefined || params.session_id.trim() === "") {
       throw new MinimalSubagentsError(
         "INVALID_ARGUMENT",

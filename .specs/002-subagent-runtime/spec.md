@@ -11,6 +11,7 @@ Input:
   model?: string;
   thinking?: ThinkingLevel;
   session_id?: string;
+  label?: string;
   prompt: string;
 }
 ```
@@ -118,6 +119,8 @@ Output:
   usage?: { turns: number; tool_uses: number; total_tokens: number };
 }
 ```
+
+- **S58:** `label` is an optional display-only widget task name for `new` and `resume`. When supplied it must be non-blank after trimming, otherwise `INVALID_ARGUMENT`; it is normalized for display with the existing 60-character/trimming rules and never persisted in snapshots or exposed in output JSON. When omitted, the widget label falls back to the existing prompt-derived value. On resume a supplied label replaces the label for the new invocation. Resume validates the supplied label only after the existing session-ID visibility and busy/resumable checks, and before any record mutation or queued write. `steer` silently ignores `label` even when present (including empty): it performs no validation and never updates the current widget task label.
 
 - **S25:** Reading output returns a fresh projection and never consumes, mutates, reloads, or rewrites the retained record.
 - **S26:** Only an existing `ses_` record is accepted. Malformed IDs, unknown/deleted sessions, and non-`ses_` IDs fail with `SESSION_NOT_FOUND`.

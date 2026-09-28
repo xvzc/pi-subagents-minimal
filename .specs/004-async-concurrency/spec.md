@@ -61,7 +61,8 @@ interface MinimalSubagentsConfig {
 ## Agents TUI Data and Visibility
 
 - **S11:** Every visible record exposes a row containing its agent name,
-  deterministic prompt label (first non-empty line, collapsed whitespace,
+  deterministic task label (the optional `label` override when supplied,
+  else the first non-empty prompt line; collapsed whitespace,
   truncated to 60 characters with `…`), elapsed duration, terminal status when
   settled, and process-local invocation statistics. The statistics begin as
   `0 turns · — in / — out`. At each assistant `message_end`, only
