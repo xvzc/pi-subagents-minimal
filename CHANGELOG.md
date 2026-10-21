@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/xvzc/pi-subagents-minimal/compare/v1.1.1...v1.1.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* relax agent communication language guidance ([e070f70](https://github.com/xvzc/pi-subagents-minimal/commit/e070f700f5c18245f961192fb3474f5ce54b4293))
+
 ## [1.1.1](https://github.com/xvzc/pi-subagents-minimal/compare/v1.1.0...v1.1.1) (2026-10-21)
 
 
