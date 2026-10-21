@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/xvzc/pi-subagents-minimal/compare/v1.1.0...v1.1.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* declare host-provided packages as peer dependencies ([447d5e7](https://github.com/xvzc/pi-subagents-minimal/commit/447d5e72688502bd0050cce60925b03c50e349ac))
+
 ## [1.1.0](https://github.com/xvzc/pi-subagents-minimal/compare/v1.0.3...v1.1.0) (2026-09-28)
 
 
