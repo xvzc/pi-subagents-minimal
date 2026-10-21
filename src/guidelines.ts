@@ -52,9 +52,7 @@ Include the relevant items below:
 * If the assignment requires an isolated workspace, state that requirement explicitly.
   Do not assume workspace isolation from role, ownership, or parallel dispatch alone.
 
-Use English for agent-to-agent communication, including briefs, follow-up steering,
-resumed-agent prompts, and internal handoffs, unless the task requires another
-language. Keep secrets out of prompts. Label forwarded material with its source and
+Keep secrets out of prompts. Label forwarded material with its source and
 purpose; distinguish verified facts from unverified agent claims. Supply the minimum
 useful excerpts or files.
 
