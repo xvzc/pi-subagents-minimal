@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/xvzc/pi-subagents-minimal/compare/v1.0.3...v1.1.0) (2026-09-28)
+
+
+### Features
+
+* support concise subagent widget labels ([3b6a222](https://github.com/xvzc/pi-subagents-minimal/commit/3b6a222a818a75a16b368354a30d2babaebb9ae5))
+
 ## [1.0.3](https://github.com/xvzc/pi-subagents-minimal/compare/v1.0.2...v1.0.3) (2026-09-28)
 
 
